@@ -1,0 +1,16 @@
+{
+  "uuid": "smot@stretchenv.github.io",
+  "name": "System Monitor on Top Panel",
+  "description": "Top-bar system monitor (SMOT): CPU, memory, NVIDIA GPU, Intel NPU, and temperatures. Click for details as a popup or a right-edge dock.",
+  "shell-version": [
+    "46",
+    "47",
+    "48",
+    "49",
+    "50"
+  ],
+  "url": "https://github.com/stretchenv/smot",
+  "version": 54,
+  "settings-schema": "org.gnome.shell.extensions.smot",
+  "gettext-domain": "smot"
+}

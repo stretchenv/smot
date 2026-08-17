@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="org.gnome.shell.extensions.smot"
+          path="/org/gnome/shell/extensions/smot/">
+    <key name="core-display" type="s">
+      <default>"per-core"</default>
+      <summary>Core usage display</summary>
+      <description>How to show core CPU usage in the popup: none (hidden), per-core (individual core bars), or histogram. On systems with more than 16 cores, per-core is not available.</description>
+    </key>
+    <key name="usage-bar-appearance" type="s">
+      <default>"fixed"</default>
+      <summary>Usage bar appearance</summary>
+      <description>Colour of utilization bars (CPU cores, GPU, NPU): fixed uses the theme accent colour; graded interpolates green at 0%, yellow at 50%, and red at 100%.</description>
+    </key>
+    <key name="memory-display" type="s">
+      <default>"simple"</default>
+      <summary>Memory display</summary>
+      <description>Memory popup detail below the Used bar: simple (available, swap) or detailed (adds free, buffers, cache, shared).</description>
+    </key>
+    <key name="show-temperature" type="b">
+      <default>true</default>
+      <summary>Show temperature</summary>
+      <description>Show the Temperature section in the popup.</description>
+    </key>
+    <key name="show-gpu" type="b">
+      <default>true</default>
+      <summary>Show GPU</summary>
+      <description>Show NVIDIA GPU cards in the popup when a GPU is present.</description>
+    </key>
+    <key name="show-npu" type="b">
+      <default>true</default>
+      <summary>Show NPU</summary>
+      <description>Show Intel NPU cards in the popup when an NPU is present.</description>
+    </key>
+    <key name="detail-view-mode" type="s">
+      <default>"popup"</default>
+      <summary>Detail view mode</summary>
+      <description>How detailed stats are shown: popup (under the panel, closes on focus loss) or dock (right-edge overlay, stays until the panel icon is toggled again). Legacy values focus-loss and toggle are treated as popup and dock.</description>
+    </key>
+    <key name="refresh-interval-sec" type="i">
+      <default>1</default>
+      <range min="1" max="60"/>
+      <summary>Refresh interval</summary>
+      <description>Seconds between panel and popup updates.</description>
+    </key>
+    <key name="show-disk-io" type="b">
+      <default>true</default>
+      <summary>Show disk I/O</summary>
+      <description>Show disk read/write rates in the popup. When off, disk stats are not read.</description>
+    </key>
+    <key name="disk-devices" type="as">
+      <default>[]</default>
+      <summary>Disk devices to monitor</summary>
+      <description>Kernel names of physical whole disks to include in disk I/O totals (for example nvme0n1, sda). Empty means all physical disks. Partitions and virtual devices are never included.</description>
+    </key>
+    <key name="show-network-io" type="b">
+      <default>true</default>
+      <summary>Show network I/O</summary>
+      <description>Show network RX/TX rates in the popup. When off, network stats are not read.</description>
+    </key>
+    <key name="network-interfaces" type="as">
+      <default>[]</default>
+      <summary>Network interfaces to monitor</summary>
+      <description>Hardware network interface names to include in network I/O totals (for example wlan0, enp1s0). Empty means all hardware interfaces. Loopback, bridges, and other virtual interfaces are never included.</description>
+    </key>
+    <key name="temperature-fields" type="s">
+      <default>"{}"</default>
+      <summary>Temperature fields</summary>
+      <description>JSON map of temperature sensor keys to {enabled, description}. Sensors with no entry are shown with their default label.</description>
+    </key>
+  </schema>
+</schemalist>

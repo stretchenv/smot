@@ -1,0 +1,315 @@
+.smot-panel {
+  spacing: 8px;
+  padding: 0 4px;
+}
+
+.smot-stat {
+  spacing: 2px;
+}
+
+.smot-icon {
+  icon-size: 1.08em;
+  -st-icon-style: symbolic;
+  padding: 0;
+  margin: 0;
+}
+
+.smot-label {
+  font-weight: 600;
+  font-feature-settings: "tnum";
+  font-size: 0.9em;
+  min-width: 2.6em;
+  letter-spacing: 0.2px;
+}
+
+.smot-io-row {
+  spacing: 8px;
+  padding: 2px 0 0;
+}
+
+.smot-io-tile {
+  spacing: 6px;
+  padding: 10px 8px 8px;
+  border-radius: 8px;
+  background-color: st-transparentize(st-mix(white, black, 50%), 0.78);
+  /* Allow shrink inside the section card (was 108px and overflowed in dock). */
+  min-width: 0;
+}
+
+.smot-io-rate {
+  font-weight: 700;
+  font-feature-settings: "tnum";
+  font-size: 1.15em;
+  letter-spacing: 0;
+  text-align: center;
+}
+
+.smot-io-caption {
+  font-size: 0.78em;
+  font-weight: 600;
+  opacity: 0.7;
+  letter-spacing: 0.3px;
+  text-align: center;
+  min-width: 0;
+}
+
+.smot-disk-warn-list {
+  spacing: 6px;
+  padding-top: 8px;
+}
+
+.smot-disk-warn {
+  spacing: 0;
+  border-radius: 8px;
+  background-color: st-transparentize(st-mix(white, black, 50%), 0.78);
+}
+
+.smot-disk-warn-accent {
+  width: 3px;
+  min-width: 3px;
+  background-color: #ff6b6b;
+  border-radius: 8px 0 0 8px;
+}
+
+.smot-disk-warn-body {
+  spacing: 3px;
+  padding: 8px 10px 8px 10px;
+}
+
+.smot-disk-warn-title {
+  spacing: 6px;
+}
+
+.smot-disk-warn-icon {
+  icon-size: 1.05em;
+}
+
+.smot-disk-warn-device {
+  font-weight: 700;
+  font-size: 0.85em;
+}
+
+.smot-disk-warn-msg {
+  font-size: 0.78em;
+  opacity: 0.9;
+}
+
+/* Section cards inside the scroll viewport */
+.smot-scroll {
+  -st-vfade-offset: 24px;
+  padding-right: 2px;
+}
+
+.smot-cards {
+  spacing: 0;
+  padding-right: 0;
+}
+
+.smot-section-title,
+.smot-section-badge,
+.smot-subsection-title,
+.smot-row-label,
+.smot-row-value,
+.smot-kv-value,
+.smot-io-rate,
+.smot-io-caption,
+.smot-disk-warn-device,
+.smot-disk-warn-msg {
+    color: inherit;
+}
+
+.smot-card {
+  spacing: 6px;
+  margin: 4px 6px 8px 6px;
+  padding: 10px 12px 12px;
+  border-radius: 11px;
+  background-color: st-transparentize(st-mix(white, black, 50%), 0.80);
+  min-width: 260px;
+}
+
+.smot-card-body {
+  spacing: 2px;
+}
+
+.smot-menu {
+  min-width: 280px;
+  padding: 4px 0 2px;
+}
+
+.smot-dock.popup-menu-content {
+  /* Background/border/fg from .popup-menu-content. */
+  min-width: 280px;
+  /* No chrome padding — equal inset lives on .smot-cards (avoids JS double-count). */
+  padding: 0;
+  /* Shorter than the work area: round all corners. */
+  border-radius: 16px;
+}
+
+.smot-dock.popup-menu-content.smot-dock-full {
+  /* End-to-end height: no curved corners. */
+  border-radius: 0;
+}
+
+.smot-dock.smot-menu {
+  padding: 0;
+}
+
+.smot-dock .smot-scroll {
+  /* Keep a little air between cards and the scrollbar trough. */
+  padding-right: 4px;
+}
+
+.smot-dock .smot-cards {
+  /* Same gap above the first card and below the last. */
+  padding: 8px 0;
+  spacing: 8px;
+}
+
+.smot-dock .smot-card {
+  margin: 0 6px;
+  min-width: 260px;
+  border-radius: 11px;
+}
+
+.smot-dock-body {
+  spacing: 0;
+}
+
+.smot-menu-dual {
+  /* Two MeterRows side-by-side keep Total-like chrome; widen so bars stay usable. */
+  min-width: 440px;
+}
+
+.smot-menu-wide {
+  min-width: 560px;
+}
+
+.smot-section-header {
+  spacing: 8px;
+  padding: 0 2px 2px;
+}
+
+.smot-section-title {
+  font-weight: 700;
+  letter-spacing: 0.2px;
+}
+
+.smot-section-badge {
+  font-weight: 600;
+  font-feature-settings: "tnum";
+  font-size: 0.85em;
+  opacity: 0.7;
+  letter-spacing: 0.2px;
+}
+
+.smot-subsection-title {
+  font-weight: 700;
+  padding: 8px 2px 2px;
+  letter-spacing: 0.2px;
+  font-size: 0.95em;
+}
+
+.smot-core-grid {
+  spacing: 6px;
+  padding-top: 2px;
+}
+
+.smot-histogram {
+  spacing: 6px;
+  padding: 8px 2px 2px;
+}
+
+.smot-hist-col {
+  spacing: 4px;
+  min-width: 44px;
+}
+
+.smot-hist-count {
+  font-weight: 700;
+  font-feature-settings: "tnum";
+  font-size: 0.9em;
+  text-align: center;
+}
+
+.smot-hist-track {
+  height: 96px;
+  min-height: 96px;
+  border-radius: 6px;
+  background-color: st-transparentize(st-mix(white, black, 50%), 0.72);
+}
+
+.smot-hist-fill {
+  border-radius: 4px 4px 0 0;
+  background-color: -st-accent-color;
+  min-height: 0;
+}
+
+.smot-hist-label {
+  font-size: 0.72em;
+  opacity: 0.9;
+  text-align: center;
+}
+
+.smot-core-column {
+  spacing: 0;
+  min-width: 0;
+}
+
+.smot-row {
+  spacing: 8px;
+  padding: 5px 8px;
+  y-align: center;
+}
+
+.smot-kv-row {
+  spacing: 8px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  y-align: center;
+}
+
+.smot-kv-row-alt {
+  background-color: st-transparentize(st-mix(white, black, 50%), 0.78);
+}
+
+.smot-row-label {
+  min-width: 64px;
+}
+
+/* Fallback before JS measures "100%" into an inline px lock. */
+.smot-row-value-box {
+  min-width: 3.25em;
+}
+
+.smot-row-value {
+  font-feature-settings: "tnum";
+  text-align: right;
+}
+
+.smot-kv-value {
+  font-feature-settings: "tnum";
+  text-align: right;
+  min-width: 7em;
+}
+
+.smot-bar-track {
+  height: 8px;
+  min-height: 8px;
+  border-radius: 4px;
+  background-color: rgba(255, 255, 255, 0.15);
+}
+
+/* Normal usage follows the Shell/theme accent (highlight) color.
+   Graded mode overrides background-color inline (green→yellow→red).
+   GNOME 46: extension.js sets theme highlight inline (no -st-accent-color). */
+.smot-bar-fill {
+  height: 8px;
+  min-height: 8px;
+  /* Radius also set inline from MeterRow so short fills stay pill-shaped. */
+  border-radius: 4px;
+  background-color: -st-accent-color;
+}
+
+.smot-muted {
+  opacity: 0.75;
+}

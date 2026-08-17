@@ -20,7 +20,7 @@ SRC_DIR_NAME="smot@stretchenv.github.io"
 SRC="$ROOT/$SRC_DIR_NAME"
 OUT_DIR="$ROOT/dist"
 # Filename tag only — not written into metadata.json (EGO owns that field).
-RELEASE_VERSION="v0.54"
+RELEASE_VERSION="v0.55"
 
 usage() {
   cat <<EOF

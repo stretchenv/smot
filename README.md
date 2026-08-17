@@ -6,6 +6,81 @@ Source: [github.com/stretchenv/smot](https://github.com/stretchenv/smot)
 
 Top-bar system monitor for **GNOME Shell 46–50**. The panel shows **CPU %** and **used memory**. Open details as a **popup** (default) or a **right-edge dock**.
 
+## Screenshots
+
+Popup under the panel, dock on the right, and preferences. Images are from real sessions (graded bars).
+
+<table>
+  <tr>
+    <td align="center" valign="top" width="50%">
+      <a href="screenshots/popup-bar-two-rows.png"><img src="screenshots/popup-bar-two-rows.png" alt="Popup with per-core CPU bars, memory, disk, network, SMART warning, and temperatures" width="360"></a>
+      <br><em>Popup — per-core bars, SMART warning</em>
+    </td>
+    <td align="center" valign="top" width="50%">
+      <a href="screenshots/dock-core-bar.png"><img src="screenshots/dock-core-bar.png" alt="Right-edge dock with per-core CPU bars" width="360"></a>
+      <br><em>Dock on the right</em>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" valign="top" width="50%">
+      <a href="screenshots/popup-nvidia-overflow.png"><img src="screenshots/popup-nvidia-overflow.png" alt="Popup showing NVIDIA GPU 0 with usage, VRAM, power, and histogram cores" width="360"></a>
+      <br><em>NVIDIA GPU card (index from nvidia-smi)</em>
+    </td>
+    <td align="center" valign="top" width="50%">
+      <a href="screenshots/popup-intel-npu.png"><img src="screenshots/popup-intel-npu.png" alt="Popup showing Intel NPU usage" width="360"></a>
+      <br><em>Intel NPU</em>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" valign="top" width="50%">
+      <a href="screenshots/prefs-window-upper-part.png"><img src="screenshots/prefs-window-upper-part.png" alt="Preferences: refresh interval, bar appearance, CPU cores, memory, disk" width="360"></a>
+      <br><em>Preferences</em>
+    </td>
+    <td align="center" valign="top" width="50%">
+      <a href="screenshots/prefs-disk.png"><img src="screenshots/prefs-disk.png" alt="Disks to monitor filter dialog" width="360"></a>
+      <br><em>Disks to monitor</em>
+    </td>
+  </tr>
+</table>
+
+<details>
+<summary>More screenshots</summary>
+
+<table>
+  <tr>
+    <td align="center" valign="top" width="50%">
+      <a href="screenshots/popup-core-bin.png"><img src="screenshots/popup-core-bin.png" alt="Popup with CPU usage histogram" width="360"></a>
+      <br><em>Popup — core histogram</em>
+    </td>
+    <td align="center" valign="top" width="50%">
+      <a href="screenshots/dock-core-bin.png"><img src="screenshots/dock-core-bin.png" alt="Dock with CPU usage histogram" width="360"></a>
+      <br><em>Dock — core histogram</em>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" valign="top" width="50%">
+      <a href="screenshots/default-view-popup-core-bar.png"><img src="screenshots/default-view-popup-core-bar.png" alt="Default popup with eight CPU core bars" width="360"></a>
+      <br><em>Popup — eight cores</em>
+    </td>
+    <td align="center" valign="top" width="50%">
+      <a href="screenshots/popup-smartmon-errors.png"><img src="screenshots/popup-smartmon-errors.png" alt="Disk SMART warning in the popup" width="360"></a>
+      <br><em>Disk SMART warning</em>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" valign="top" width="50%">
+      <a href="screenshots/prefs-window-lower-part.png"><img src="screenshots/prefs-window-lower-part.png" alt="Preferences lower half: network, temperature, detail view" width="360"></a>
+      <br><em>Preferences — lower</em>
+    </td>
+    <td align="center" valign="top" width="50%">
+      <a href="screenshots/prefs-network.png"><img src="screenshots/prefs-network.png" alt="Interfaces to monitor filter dialog" width="360"></a>
+      <br><em>Interfaces to monitor</em>
+    </td>
+  </tr>
+</table>
+
+</details>
+
 ## Install from a release zip
 
 Use this for a packed release (GitHub release asset or `pack-release.sh` output). The zip has `metadata.json` at the root so **EGO** and **`gnome-extensions install`** accept it. Do **not** use `install-smot.sh` on a zip.
@@ -143,6 +218,7 @@ The indicator is on the **right** of the top bar (status area), as a separate pa
 | `smot@stretchenv.github.io/schemas/` | GSettings schema |
 | `install-smot.sh` | Source-tree install only (not in the release zip) |
 | `pack-release.sh` | Build an EGO / `gnome-extensions install` zip in `dist/` |
+| `screenshots/` | README images (not packed into the EGO zip) |
 
 ## Settings
 

@@ -158,8 +158,10 @@ export const MeterRow = GObject.registerClass(
 class SmotMeterRow extends St.BoxLayout {
     /**
      * @param {string} labelText
-     * @param {{valueProbe?: string}} [params] valueProbe sizes the right-hand slot
-     *   (default '100%'). Use a wider probe for absolute values (e.g. '999.9G').
+     * @param {{valueProbe?: string, labelProbe?: string}} [params]
+     *   valueProbe sizes the right-hand slot (default '100%'). Use a wider
+     *   probe for absolute values (e.g. '999.9G'). labelProbe locks the left
+     *   label to that width so stacked bars (Usage / VRAM) share one length.
      */
     _init(labelText, params = {}) {
         super._init({
@@ -169,6 +171,7 @@ class SmotMeterRow extends St.BoxLayout {
         });
 
         this._valueProbe = params.valueProbe || '100%';
+        this._labelProbe = params.labelProbe || '';
         this._lastValueText = null;
 
         this._label = new St.Label({
@@ -216,6 +219,7 @@ class SmotMeterRow extends St.BoxLayout {
         this.add_child(this._valueBox);
 
         this._valueSlotWidth = 0;
+        this._labelSlotWidth = 0;
         this._percent = -1;
         this._shownPct = -1;
         this._lastWidth = -1;
@@ -229,6 +233,10 @@ class SmotMeterRow extends St.BoxLayout {
             'notify::allocation', () => this._syncFillWidth());
         this._valueAllocId = this._valueBox.connect(
             'notify::allocation', () => this._ensureValueSlotWidth());
+        this._labelAllocId = this._labelProbe
+            ? this._label.connect(
+                'notify::allocation', () => this._ensureLabelSlotWidth())
+            : 0;
         this.connect('destroy', () => {
             if (this._allocId) {
                 this._track.disconnect(this._allocId);
@@ -238,8 +246,27 @@ class SmotMeterRow extends St.BoxLayout {
                 this._valueBox.disconnect(this._valueAllocId);
                 this._valueAllocId = 0;
             }
+            if (this._labelAllocId) {
+                this._label.disconnect(this._labelAllocId);
+                this._labelAllocId = 0;
+            }
         });
         this._ensureValueSlotWidth();
+        this._ensureLabelSlotWidth();
+    }
+
+    _ensureLabelSlotWidth() {
+        if (!this._labelProbe || this._labelSlotWidth > 0)
+            return;
+        const prev = this._label.text;
+        this._label.text = this._labelProbe;
+        const [, nat] = this._label.get_preferred_width(-1);
+        this._label.text = prev;
+        if (nat <= 1)
+            return;
+        this._labelSlotWidth = Math.ceil(nat);
+        const css = `width: ${this._labelSlotWidth}px; min-width: ${this._labelSlotWidth}px;`;
+        this._label.set_style(css);
     }
 
     _ensureValueSlotWidth() {

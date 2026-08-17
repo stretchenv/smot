@@ -8,7 +8,7 @@ export function isPhysicalDiskName(name) {
 
 /**
  * Normalize a settings list of disk names (physical whole disks only).
- * Empty input → empty array (caller treats as “all disks”).
+ * Does not require the disk to be present. Empty input → empty array.
  */
 export function normalizeDiskDevices(names) {
     if (!names || typeof names[Symbol.iterator] !== 'function')

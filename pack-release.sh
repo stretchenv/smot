@@ -11,7 +11,7 @@
 # Copies ../LICENSE into the extension root when present.
 #
 # Usage:
-#   ./pack-release.sh           # writes dist/<uuid>-v<version>.zip
+#   ./pack-release.sh           # writes dist/<uuid>-<release-version>.zip
 #   ./pack-release.sh --help
 set -euo pipefail
 
@@ -19,6 +19,8 @@ ROOT="$(cd "$(dirname "$0")" && pwd)"
 SRC_DIR_NAME="smot@stretchenv.github.io"
 SRC="$ROOT/$SRC_DIR_NAME"
 OUT_DIR="$ROOT/dist"
+# Filename tag only — not written into metadata.json (EGO owns that field).
+RELEASE_VERSION="v0.54"
 
 usage() {
   cat <<EOF
@@ -27,7 +29,7 @@ Usage: $(basename "$0") [--out-dir DIR] [--help]
   --out-dir DIR   Output directory (default: dist/)
   --help          Show this help.
 
-Reads uuid and version from $SRC_DIR_NAME/metadata.json.
+Reads uuid from $SRC_DIR_NAME/metadata.json. Zip name uses RELEASE_VERSION.
 EOF
 }
 
@@ -76,10 +78,13 @@ read_meta() {
 }
 
 UUID="$(read_meta uuid)"
-VERSION="$(read_meta version)"
 
-if [[ -z "$UUID" || -z "$VERSION" ]]; then
-  echo "Could not read uuid/version from metadata.json" >&2
+if [[ -z "$UUID" ]]; then
+  echo "Could not read uuid from metadata.json" >&2
+  exit 1
+fi
+if [[ -z "$RELEASE_VERSION" ]]; then
+  echo "RELEASE_VERSION is empty" >&2
   exit 1
 fi
 
@@ -100,7 +105,7 @@ if [[ -f "$ROOT/LICENSE" ]]; then
 fi
 
 mkdir -p "$OUT_DIR"
-ZIP_PATH="$OUT_DIR/${UUID}-v${VERSION}.zip"
+ZIP_PATH="$OUT_DIR/${UUID}-${RELEASE_VERSION}.zip"
 rm -f "$ZIP_PATH"
 
 # zip from STAGE so metadata.json is at the archive root (EGO / gnome-extensions).

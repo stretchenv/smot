@@ -15,11 +15,7 @@ export {
 
 export {normalizePciShort, gpuTempKey, nvidiaGpuCardTitle} from './lib/pci.js';
 
-export {
-    discoverNvidiaGpus,
-    formatPciSlotLabel,
-    resolvePciSlotLabel,
-} from './lib/gpu.js';
+export {discoverNvidiaGpus} from './lib/gpu.js';
 
 export {discoverIntelNpus} from './lib/npu.js';
 

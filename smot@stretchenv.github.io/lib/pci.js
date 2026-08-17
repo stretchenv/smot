@@ -20,8 +20,9 @@ export function gpuTempKey(pciShort) {
     return `gpu · ${pciShort}`;
 }
 
-/** Card title: plain name, or with chassis slot when sysfs provides one. */
-export function nvidiaGpuCardTitle(slotLabel) {
-    const slot = typeof slotLabel === 'string' ? slotLabel.trim() : '';
-    return slot ? `NVIDIA GPU · ${slot}` : 'NVIDIA GPU';
+/** Card title: NVIDIA GPU <nvidia-smi index>, or plain name if index unknown. */
+export function nvidiaGpuCardTitle(index) {
+    if (!Number.isInteger(index) || index < 0 || index > 99)
+        return 'NVIDIA GPU';
+    return `NVIDIA GPU ${index}`;
 }

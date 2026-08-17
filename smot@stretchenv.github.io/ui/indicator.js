@@ -10,8 +10,6 @@ import {
     StatsCollector,
     formatBytesFromKb,
     formatPercent,
-    normalizeDiskDevices,
-    normalizeNetworkInterfaces,
     parseTemperatureFields,
 } from '../stats.js';
 import {
@@ -84,10 +82,8 @@ class SmotIndicator extends PanelMenu.Button {
             disk: this._showDiskIo,
             net: this._showNetworkIo,
         });
-        this._collector.setDiskDevices(
-            normalizeDiskDevices(this._settings.get_strv('disk-devices')));
-        this._collector.setNetworkInterfaces(
-            normalizeNetworkInterfaces(this._settings.get_strv('network-interfaces')));
+        this._applyDiskFilter();
+        this._applyNetworkFilter();
         this._collector.setPopupFeatures({
             temp: this._showTemperature,
             gpu: this._showGpu,
@@ -276,13 +272,11 @@ class SmotIndicator extends PanelMenu.Button {
                     this._hideNpuCards();
                 if (!this._showTemperature && this._tempSection)
                     this._tempSection.visible = false;
-            } else if (key === 'disk-devices') {
-                this._collector.setDiskDevices(
-                    normalizeDiskDevices(this._settings.get_strv('disk-devices')));
-            } else if (key === 'network-interfaces') {
-                this._collector.setNetworkInterfaces(
-                    normalizeNetworkInterfaces(
-                        this._settings.get_strv('network-interfaces')));
+            } else if (key === 'disk-devices' || key === 'disk-filter-enabled') {
+                this._applyDiskFilter();
+            } else if (key === 'network-interfaces' ||
+                       key === 'network-filter-enabled') {
+                this._applyNetworkFilter();
             } else if (key === 'detail-view-mode') {
                 this._onDetailViewModeChanged();
                 return;
@@ -337,6 +331,20 @@ class SmotIndicator extends PanelMenu.Button {
         this._syncFixedBarFill();
         this._restartTimer();
         this._refresh();
+    }
+
+    _applyDiskFilter() {
+        this._collector.setDiskFilter({
+            enabled: this._settings.get_boolean('disk-filter-enabled'),
+            names: this._settings.get_strv('disk-devices'),
+        });
+    }
+
+    _applyNetworkFilter() {
+        this._collector.setNetworkFilter({
+            enabled: this._settings.get_boolean('network-filter-enabled'),
+            names: this._settings.get_strv('network-interfaces'),
+        });
     }
 
     _clampRefreshInterval(sec) {

@@ -32,6 +32,20 @@ import {
 
 const SENSOR_RESYNC_US = 60 * 1000 * 1000; // 60s
 
+function allowSetsEqual(a, b) {
+    if (a == null && b == null)
+        return true;
+    if (a == null || b == null)
+        return false;
+    if (a.size !== b.size)
+        return false;
+    for (const n of a) {
+        if (!b.has(n))
+            return false;
+    }
+    return true;
+}
+
 export class StatsCollector {
     constructor() {
         // Support up to 256 logical CPUs + aggregate without realloc each tick
@@ -86,8 +100,8 @@ export class StatsCollector {
         this._wantTemp = true;
         this._wantGpu = true;
         this._wantNpu = true;
-        this._diskAllow = null; // null = all physical disks; Set = subset
-        this._netAllow = null; // null = all ifaces except lo; Set = subset
+        this._diskAllow = null; // null = all physical disks; Set = subset (may be empty)
+        this._netAllow = null; // null = all hardware ifaces; Set = subset (may be empty)
         this._ioPrev = null; // {atUs, diskRead, diskWrite, netRx, netTx}
         this._ioRates = {
             diskRead: null,
@@ -144,19 +158,16 @@ export class StatsCollector {
     }
 
     /**
-     * Restrict disk I/O totals to these physical whole-disk names.
-     * Empty / omitted → all physical disks.
+     * Restrict disk I/O totals when enabled.
+     * enabled=false → all physical disks (names kept by caller).
+     * enabled=true → only these names that are present; empty list matches nothing.
      */
-    setDiskDevices(names) {
+    setDiskFilter({enabled = false, names = []} = {}) {
         if (this._disposed)
             return;
         const list = normalizeDiskDevices(names);
-        const next = list.length === 0 ? null : new Set(list);
-        if (this._diskAllow == null && next == null)
-            return;
-        if (this._diskAllow && next &&
-            this._diskAllow.size === next.size &&
-            [...next].every(n => this._diskAllow.has(n)))
+        const next = enabled ? new Set(list) : null;
+        if (allowSetsEqual(this._diskAllow, next))
             return;
         this._diskAllow = next;
         this._ioPrev = null;
@@ -165,19 +176,16 @@ export class StatsCollector {
     }
 
     /**
-     * Restrict network I/O totals to these interface names (never lo).
-     * Empty / omitted → all interfaces except loopback.
+     * Restrict network I/O totals when enabled.
+     * enabled=false → all hardware interfaces (names kept by caller).
+     * enabled=true → only these names that are present; empty list matches nothing.
      */
-    setNetworkInterfaces(names) {
+    setNetworkFilter({enabled = false, names = []} = {}) {
         if (this._disposed)
             return;
         const list = normalizeNetworkInterfaces(names);
-        const next = list.length === 0 ? null : new Set(list);
-        if (this._netAllow == null && next == null)
-            return;
-        if (this._netAllow && next &&
-            this._netAllow.size === next.size &&
-            [...next].every(n => this._netAllow.has(n)))
+        const next = enabled ? new Set(list) : null;
+        if (allowSetsEqual(this._netAllow, next))
             return;
         this._netAllow = next;
         this._ioPrev = null;

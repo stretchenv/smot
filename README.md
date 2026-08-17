@@ -68,7 +68,7 @@ SMOT stays in-process GJS with bounded `/proc` and sysfs reads. Heavy work (GPU,
 | **Memory** | Used as a bar (fill = % of total; right side shows absolute size); then simple (available, swap) or detailed (free, buffers, file cache, shared, …) |
 | **Disk I/O** | Read/write rates; optional device filter (physical disks); UDisks2 SMART warnings when available |
 | **Network I/O** | RX/TX rates; optional filter (hardware NICs only) |
-| **NVIDIA GPU** | Usage bar; VRAM in use as a bar (fill = % of total; absolute size on the right) plus VRAM total; power (W); title uses chassis PCI slot from sysfs when available, otherwise plain “NVIDIA GPU”; GPU °C under Temperature when GPU monitoring is on |
+| **NVIDIA GPU** | Usage bar; VRAM in use as a bar (fill = % of total; absolute size on the right) plus VRAM available; power (W); title is “NVIDIA GPU <index>” from `nvidia-smi` when the index is known, otherwise “NVIDIA GPU”; GPU °C under Temperature when GPU monitoring is on |
 | **Intel NPU** | Usage from sysfs while details are open |
 | **Temperature** | hwmon/thermal (+ NVIDIA GPU temps when GPU is on); customize sensors in prefs |
 | **Show switches** | Temperature / GPU / NPU (GPU & NPU prefs only when hardware is detected); CPU & memory always on |
@@ -88,7 +88,7 @@ Switching mode closes the current detail surface. On lock/suspend, an open dock 
 
 ## Disk and network filters
 
-I/O cards can use **all** eligible devices or a **subset**. Rates shown are the **sum** of the selected devices.
+I/O cards can use **all** eligible devices or a **subset**. Rates shown are the **sum** of the selected devices. Turning **Monitor all** back on keeps the previous ticks so you can restore the subset later. With the filter on and nothing ticked, rates match nothing.
 
 1. Open prefs: `gnome-extensions prefs smot@stretchenv.github.io`.
 2. Turn **Show disk I/O** / **Show network I/O** on as needed.
@@ -150,7 +150,7 @@ The indicator is on the **right** of the top bar (status area), as a separate pa
 gnome-extensions prefs smot@stretchenv.github.io
 ```
 
-Notable keys: **Detail view** (popup / dock), core display, usage bar appearance, memory detail, refresh interval, show disk/network/temperature/GPU/NPU, **Disks to monitor** / **Interfaces to monitor**, temperature field enable/labels.
+Notable keys: **Detail view** (popup / dock), core display, usage bar appearance, memory detail, refresh interval, show disk/network/temperature/GPU/NPU, **Disks to monitor** / **Interfaces to monitor** (filter on/off keeps the saved list), temperature field enable/labels.
 
 ## Privacy
 

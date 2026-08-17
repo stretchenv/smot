@@ -8,7 +8,7 @@
       <description>How to show core CPU usage in the popup: none (hidden), per-core (individual core bars), or histogram. On systems with more than 16 cores, per-core is not available.</description>
     </key>
     <key name="usage-bar-appearance" type="s">
-      <default>"fixed"</default>
+      <default>"graded"</default>
       <summary>Usage bar appearance</summary>
       <description>Colour of utilization bars (CPU cores, GPU, NPU): fixed uses the theme accent colour; graded interpolates green at 0%, yellow at 50%, and red at 100%.</description>
     </key>
@@ -48,20 +48,30 @@
       <summary>Show disk I/O</summary>
       <description>Show disk read/write rates in the popup. When off, disk stats are not read.</description>
     </key>
+    <key name="disk-filter-enabled" type="b">
+      <default>false</default>
+      <summary>Filter disk I/O devices</summary>
+      <description>When false, disk I/O rates include all physical disks and disk-devices is only a saved selection. When true, rates include only names in disk-devices that are present; an empty list matches nothing.</description>
+    </key>
     <key name="disk-devices" type="as">
       <default>[]</default>
       <summary>Disk devices to monitor</summary>
-      <description>Kernel names of physical whole disks to include in disk I/O totals (for example nvme0n1, sda). Empty means all physical disks. Partitions and virtual devices are never included.</description>
+      <description>Kernel names of physical whole disks saved for the disk filter (for example nvme0n1, sda). Used only when disk-filter-enabled is true. Partitions and virtual devices are never included.</description>
     </key>
     <key name="show-network-io" type="b">
       <default>true</default>
       <summary>Show network I/O</summary>
       <description>Show network RX/TX rates in the popup. When off, network stats are not read.</description>
     </key>
+    <key name="network-filter-enabled" type="b">
+      <default>false</default>
+      <summary>Filter network interfaces</summary>
+      <description>When false, network I/O rates include all hardware interfaces and network-interfaces is only a saved selection. When true, rates include only names in network-interfaces that are present; an empty list matches nothing.</description>
+    </key>
     <key name="network-interfaces" type="as">
       <default>[]</default>
       <summary>Network interfaces to monitor</summary>
-      <description>Hardware network interface names to include in network I/O totals (for example wlan0, enp1s0). Empty means all hardware interfaces. Loopback, bridges, and other virtual interfaces are never included.</description>
+      <description>Hardware network interface names saved for the network filter (for example wlan0, enp1s0). Used only when network-filter-enabled is true. Loopback, bridges, and other virtual interfaces are never included.</description>
     </key>
     <key name="temperature-fields" type="s">
       <default>"{}"</default>

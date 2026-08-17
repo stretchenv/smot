@@ -32,12 +32,8 @@ export function isAllowedPath(path) {
     if (/^\/sys\/class\/net\/[A-Za-z0-9][A-Za-z0-9._:@-]{0,14}\/ifalias$/.test(path))
         return true;
 
-    // NVIDIA (and other) PCI probe: identity + optional chassis slot hints
-    if (/^\/sys\/bus\/pci\/devices\/[0-9a-f]{4}:[0-9a-f]{2}:[0-9a-f]{2}\.[0-7]\/(vendor|class|label|index|acpi_index)$/i.test(path))
-        return true;
-
-    // Physical PCI slot address (hotplug / platform slots → chassis label)
-    if (/^\/sys\/bus\/pci\/slots\/[A-Za-z0-9][A-Za-z0-9._-]{0,31}\/address$/.test(path))
+    // NVIDIA PCI probe: vendor + class only
+    if (/^\/sys\/bus\/pci\/devices\/[0-9a-f]{4}:[0-9a-f]{2}:[0-9a-f]{2}\.[0-7]\/(vendor|class)$/i.test(path))
         return true;
 
     // Intel NPU (intel_vpu) via accel class + optional PCI busy/memory nodes

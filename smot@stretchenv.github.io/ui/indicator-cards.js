@@ -77,15 +77,16 @@ export const IndicatorCards = {
     _ensureGpuCards(gpus) {
         while (this._gpuCards.length < gpus.length) {
             const section = new DetailSection('NVIDIA GPU');
-            const util = new MeterRow('Usage');
+            const gpuMeter = {valueProbe: '999.9G', labelProbe: 'VRAM in use'};
+            const util = new MeterRow('Usage', gpuMeter);
             util.setAppearance(this._usageBarAppearance);
-            const vram = new MeterRow('VRAM in use', {valueProbe: '999.9G'});
+            const vram = new MeterRow('VRAM in use', gpuMeter);
             vram.setAppearance(this._usageBarAppearance);
-            const vramTotal = new KeyValueRow('VRAM Total', {alt: false});
+            const vramAvail = new KeyValueRow('VRAM Avail', {alt: false});
             const power = new KeyValueRow('Power draw', {alt: true});
             section.addActor(util);
             section.addActor(vram);
-            section.addActor(vramTotal);
+            section.addActor(vramAvail);
             section.addActor(power);
             // Keep GPU cards just above Temperature.
             this._cardsBox.insert_child_below(section, this._tempSection);
@@ -93,7 +94,7 @@ export const IndicatorCards = {
                 section,
                 util,
                 vram,
-                vramTotal,
+                vramAvail,
                 power,
                 title: '',
             });
@@ -143,9 +144,12 @@ export const IndicatorCards = {
                 ? formatBytesFromKb(usedMiB * 1024)
                 : '—';
             card.vram.setPercent(vramPct, vramText);
-            card.vramTotal.setValue(
-                totalMiB != null
-                    ? formatBytesFromKb(totalMiB * 1024)
+            const availMiB = usedMiB != null && totalMiB != null
+                ? Math.max(0, totalMiB - usedMiB)
+                : null;
+            card.vramAvail.setValue(
+                availMiB != null
+                    ? formatBytesFromKb(availMiB * 1024)
                     : '—');
             card.power.setValue(
                 gpu.powerW != null

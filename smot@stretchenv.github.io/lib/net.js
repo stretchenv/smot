@@ -32,8 +32,9 @@ export function isHardwareNetIface(name) {
 }
 
 /**
- * Normalize a settings list of network interface names (hardware NICs only).
- * Empty input → empty array (caller treats as “all interfaces”).
+ * Normalize a settings list of network interface names.
+ * Keeps syntactically valid names even if the iface is unplugged.
+ * Empty input → empty array. Sampling still requires a hardware NIC.
  */
 export function normalizeNetworkInterfaces(names) {
     if (!names || typeof names[Symbol.iterator] !== 'function')
@@ -42,7 +43,7 @@ export function normalizeNetworkInterfaces(names) {
     const seen = new Set();
     for (const raw of names) {
         const name = String(raw || '').trim();
-        if (!name || seen.has(name) || !isHardwareNetIface(name))
+        if (!name || seen.has(name) || !isCountedNetIface(name))
             continue;
         seen.add(name);
         out.push(name);

@@ -10,7 +10,6 @@
     "50"
   ],
   "url": "https://github.com/stretchenv/smot",
-  "version": 54,
   "settings-schema": "org.gnome.shell.extensions.smot",
   "gettext-domain": "smot"
 }

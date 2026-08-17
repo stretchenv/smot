@@ -308,7 +308,7 @@ function openTemperatureFieldsDialog(window, settings) {
 
 /**
  * Shared “monitor all / pick subset” dialog for disks or network ifaces.
- * Empty setting array means all discovered names.
+ * Filter-off keeps the saved name list. Filter-on with an empty list matches nothing.
  * @param {object} opts
  * @param {{name: string, subtitle?: string}[]} opts.entries
  */
@@ -321,12 +321,14 @@ function openNamedDeviceDialog(window, settings, opts) {
         listTitle,
         listDescription,
         emptyTitle,
+        filterEnabledKey,
         settingKey,
         entries,
         normalize,
     } = opts;
 
     const names = (entries || []).map(e => e.name);
+    const present = new Set(names);
 
     const dialog = new Adw.Dialog({
         title: dialogTitle,
@@ -342,7 +344,7 @@ function openNamedDeviceDialog(window, settings, opts) {
 
     const page = new Adw.PreferencesPage();
     const saved = normalize(settings.get_strv(settingKey));
-    const monitorAll = saved.length === 0;
+    const monitorAll = !settings.get_boolean(filterEnabledKey);
 
     const modeGroup = new Adw.PreferencesGroup({
         title: _('Selection'),
@@ -372,7 +374,7 @@ function openNamedDeviceDialog(window, settings, opts) {
             sensitive: false,
         }));
     } else {
-        const selected = new Set(monitorAll ? names : saved);
+        const selected = new Set(saved);
         for (const entry of entries) {
             const row = new Adw.ActionRow({
                 title: entry.name,
@@ -394,38 +396,29 @@ function openNamedDeviceDialog(window, settings, opts) {
         const all = allRow.get_active();
         for (const {check} of checkRows) {
             check.sensitive = !all;
-            if (all)
-                check.set_active(true);
         }
         listGroup.sensitive = !all && checkRows.length > 0;
     };
     syncSensitive();
 
     const persistFromChecks = () => {
-        if (allRow.get_active() || checkRows.length === 0)
+        if (allRow.get_active())
             return;
         const chosen = checkRows
             .filter(({check}) => check.get_active())
             .map(({name}) => name);
-        if (chosen.length === 0) {
-            allRow.set_active(true);
-            return;
-        }
-        settings.set_strv(settingKey, normalize(chosen));
+        const stale = saved.filter(n => !present.has(n));
+        settings.set_strv(settingKey, normalize(chosen.concat(stale)));
+        settings.set_boolean(filterEnabledKey, true);
     };
 
     allRow.connect('notify::active', () => {
         syncSensitive();
-        if (allRow.get_active() || checkRows.length === 0) {
-            settings.set_strv(settingKey, []);
+        if (allRow.get_active()) {
+            settings.set_boolean(filterEnabledKey, false);
             return;
         }
-        const chosen = checkRows
-            .filter(({check}) => check.get_active())
-            .map(({name}) => name);
-        settings.set_strv(
-            settingKey,
-            normalize(chosen.length > 0 ? chosen : names));
+        persistFromChecks();
     });
     for (const {check} of checkRows)
         check.connect('toggled', persistFromChecks);
@@ -443,12 +436,13 @@ function openNamedDeviceDialog(window, settings, opts) {
 function openDiskDevicesDialog(window, settings) {
     openNamedDeviceDialog(window, settings, {
         dialogTitle: _('Disks to monitor'),
-        modeDescription: _('Physical whole disks only (not partitions). Empty selection in settings means all disks.'),
+        modeDescription: _('Physical whole disks only (not partitions). Turning “monitor all” off uses the ticked disks; none ticked means no disk I/O. The list is kept when monitoring all.'),
         allTitle: _('Monitor all physical disks'),
-        allSubtitle: _('When off, choose one or more disks below'),
+        allSubtitle: _('When off, rates use only the ticked disks'),
         listTitle: _('Disks'),
         listDescription: _('Rates in the window are the sum of the selected disks.'),
         emptyTitle: _('No physical disks were found on this system.'),
+        filterEnabledKey: 'disk-filter-enabled',
         settingKey: 'disk-devices',
         entries: listPhysicalDiskEntries(),
         normalize: normalizeDiskDevices,
@@ -458,12 +452,13 @@ function openDiskDevicesDialog(window, settings) {
 function openNetworkInterfacesDialog(window, settings) {
     openNamedDeviceDialog(window, settings, {
         dialogTitle: _('Interfaces to monitor'),
-        modeDescription: _('Hardware network interfaces only (not bridges, virtual, or loopback). Empty selection means all such interfaces.'),
+        modeDescription: _('Hardware network interfaces only (not bridges, virtual, or loopback). Turning “monitor all” off uses the ticked interfaces; none ticked means no network I/O. The list is kept when monitoring all.'),
         allTitle: _('Monitor all interfaces'),
-        allSubtitle: _('When off, choose one or more interfaces below'),
+        allSubtitle: _('When off, rates use only the ticked interfaces'),
         listTitle: _('Interfaces'),
         listDescription: _('Rates in the window are the sum of the selected interfaces. Subtitles show interface alias when set.'),
         emptyTitle: _('No hardware network interfaces were found on this system.'),
+        filterEnabledKey: 'network-filter-enabled',
         settingKey: 'network-interfaces',
         entries: listNetworkInterfaceEntries(),
         normalize: normalizeNetworkInterfaces,

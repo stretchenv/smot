@@ -1,8 +1,8 @@
 import {
     USE_THEME_HIGHLIGHT_FILL,
     colorToCss,
+    ensureFixedBarFillCss,
     fixedBarFillCss,
-    resolveThemeHighlightFillCss,
     setFixedBarFillCss,
 } from './theme.js';
 import {USAGE_BAR_FIXED} from './constants.js';
@@ -13,9 +13,13 @@ export const IndicatorTheme = {
         let fg = null;
         const chrome = (this._dockOpen && this._dock) ? this._dock : this.menu?.box;
         try {
+            if (!chrome?.get_stage?.())
+                return;
             fg = chrome.get_theme_node().get_foreground_color();
         } catch (_e) {
             try {
+                if (!this.menu?.actor?.get_stage?.())
+                    return;
                 fg = this.menu.actor.get_theme_node().get_foreground_color();
             } catch (_e2) {
                 return;
@@ -53,11 +57,13 @@ export const IndicatorTheme = {
         }
         const source = (this._dockOpen && this._dock)
             ? this._dock
-            : (this.menu?.box || this);
-        const css = resolveThemeHighlightFillCss(source);
-        if (css === fixedBarFillCss)
+            : this.menu?.box;
+        if (!source?.get_stage?.())
             return;
-        setFixedBarFillCss(css);
+        const prev = fixedBarFillCss;
+        ensureFixedBarFillCss(source);
+        if (fixedBarFillCss === prev)
+            return;
         this._refreshFixedBarFills();
     },
 

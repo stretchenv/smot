@@ -31,9 +31,15 @@
   spacing: 6px;
   padding: 10px 8px 8px;
   border-radius: 8px;
-  background-color: st-transparentize(st-mix(white, black, 50%), 0.78);
+  background-color: rgba(128, 128, 128, 0.22);
   /* Allow shrink inside the section card (was 108px and overflowed in dock). */
   min-width: 0;
+}
+
+/* GNOME 47+: theme-adaptive fill. Unknown functions on 46 — keep in a
+   follow-up rule so a parse skip cannot drop padding/radius. */
+.smot-io-tile {
+  background-color: st-transparentize(st-mix(white, black, 50%), 0.78);
 }
 
 .smot-io-rate {
@@ -61,6 +67,10 @@
 .smot-disk-warn {
   spacing: 0;
   border-radius: 8px;
+  background-color: rgba(128, 128, 128, 0.22);
+}
+
+.smot-disk-warn {
   background-color: st-transparentize(st-mix(white, black, 50%), 0.78);
 }
 
@@ -123,8 +133,12 @@
   margin: 4px 6px 8px 6px;
   padding: 10px 12px 12px;
   border-radius: 11px;
-  background-color: st-transparentize(st-mix(white, black, 50%), 0.80);
+  background-color: rgba(128, 128, 128, 0.20);
   min-width: 260px;
+}
+
+.smot-card {
+  background-color: st-transparentize(st-mix(white, black, 50%), 0.80);
 }
 
 .smot-card-body {
@@ -235,13 +249,21 @@
   height: 96px;
   min-height: 96px;
   border-radius: 6px;
+  background-color: rgba(128, 128, 128, 0.28);
+}
+
+.smot-hist-track {
   background-color: st-transparentize(st-mix(white, black, 50%), 0.72);
 }
 
 .smot-hist-fill {
   border-radius: 4px 4px 0 0;
-  background-color: -st-accent-color;
+  background-color: theme_selected_bg_color;
   min-height: 0;
+}
+
+.smot-hist-fill {
+  background-color: -st-accent-color;
 }
 
 .smot-hist-label {
@@ -266,6 +288,10 @@
   padding: 5px 8px;
   border-radius: 6px;
   y-align: center;
+}
+
+.smot-kv-row-alt {
+  background-color: rgba(128, 128, 128, 0.22);
 }
 
 .smot-kv-row-alt {
@@ -299,14 +325,17 @@
   background-color: rgba(255, 255, 255, 0.15);
 }
 
-/* Normal usage follows the Shell/theme accent (highlight) color.
-   Graded mode overrides background-color inline (green→yellow→red).
-   GNOME 46: extension.js sets theme highlight inline (no -st-accent-color). */
+/* Fixed usage: Shell highlight (46 JS) or accent (47+ -st-accent-color).
+   Graded mode overrides background-color inline (green→yellow→red). */
 .smot-bar-fill {
   height: 8px;
   min-height: 8px;
   /* Radius also set inline from MeterRow so short fills stay pill-shaped. */
   border-radius: 4px;
+  background-color: theme_selected_bg_color;
+}
+
+.smot-bar-fill {
   background-color: -st-accent-color;
 }
 

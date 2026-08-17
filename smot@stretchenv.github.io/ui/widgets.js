@@ -4,6 +4,8 @@ import GObject from 'gi://GObject';
 import Pango from 'gi://Pango';
 import St from 'gi://St';
 
+import * as Config from 'resource:///org/gnome/shell/misc/config.js';
+
 import {formatPercent, formatRateBytes} from '../stats.js';
 import {
     HIST_TRACK_HEIGHT,
@@ -13,7 +15,25 @@ import {
     gradedUsageCss,
     normalizeUsageBarAppearance,
 } from './constants.js';
-import {fixedBarFillStyle} from './theme.js';
+import {ensureFixedBarFillCss, fixedBarFillStyle} from './theme.js';
+
+const SHELL_MAJOR = Number.parseInt(Config.PACKAGE_VERSION, 10);
+
+/**
+ * St.BoxLayout: GNOME 46–47 expose `vertical`; 48+ use `orientation`.
+ * Do not pass either in the constructor — 46 throws on `orientation`.
+ */
+export function setBoxVertical(box, vertical) {
+    if (!box)
+        return;
+    if (SHELL_MAJOR >= 48) {
+        box.orientation = vertical
+            ? Clutter.Orientation.VERTICAL
+            : Clutter.Orientation.HORIZONTAL;
+    } else {
+        box.vertical = !!vertical;
+    }
+}
 
 export function loadExtensionIcon(extension, relativePath) {
     const file = extension.dir.resolve_relative_path(relativePath);
@@ -23,12 +43,12 @@ export function loadExtensionIcon(extension, relativePath) {
 /** One IO metric tile: rate centered above caption. */
 export function makeIoRateColumn(caption) {
     const tile = new St.BoxLayout({
-        orientation: Clutter.Orientation.VERTICAL,
         style_class: 'smot-io-tile',
         x_expand: true,
         x_align: Clutter.ActorAlign.FILL,
         y_align: Clutter.ActorAlign.CENTER,
     });
+    setBoxVertical(tile, true);
 
     const rate = new St.Label({
         text: formatRateBytes(null),
@@ -92,7 +112,6 @@ export function formatIoFilterBadge(info) {
 /** Nested SMART warning tile inside the Disk card. */
 export function makeSmartWarningCard() {
     const box = new St.BoxLayout({
-        orientation: Clutter.Orientation.HORIZONTAL,
         style_class: 'smot-disk-warn',
         x_expand: true,
         visible: false,
@@ -104,13 +123,12 @@ export function makeSmartWarningCard() {
         x_expand: false,
     });
     const body = new St.BoxLayout({
-        orientation: Clutter.Orientation.VERTICAL,
         style_class: 'smot-disk-warn-body',
         x_expand: true,
         y_expand: true,
     });
+    setBoxVertical(body, true);
     const title = new St.BoxLayout({
-        orientation: Clutter.Orientation.HORIZONTAL,
         style_class: 'smot-disk-warn-title',
         x_expand: true,
     });
@@ -251,12 +269,14 @@ class SmotMeterRow extends St.BoxLayout {
                 this._labelAllocId = 0;
             }
         });
-        this._ensureValueSlotWidth();
-        this._ensureLabelSlotWidth();
+        // Measure after map: get_preferred_width → get_theme_node, which 46
+        // logs (and can warn) when the actor is not on the stage.
     }
 
     _ensureLabelSlotWidth() {
         if (!this._labelProbe || this._labelSlotWidth > 0)
+            return;
+        if (!this.get_stage())
             return;
         const prev = this._label.text;
         this._label.text = this._labelProbe;
@@ -271,6 +291,8 @@ class SmotMeterRow extends St.BoxLayout {
 
     _ensureValueSlotWidth() {
         if (this._valueSlotWidth > 0)
+            return;
+        if (!this.get_stage())
             return;
         const prev = this._value.text;
         this._value.text = this._valueProbe;
@@ -317,7 +339,7 @@ class SmotMeterRow extends St.BoxLayout {
             this._paintFill();
             return;
         }
-        const fixedCss = fixedBarFillStyle();
+        const fixedCss = ensureFixedBarFillCss(this) || fixedBarFillStyle();
         const key = fixedCss ? `fixed:${fixedCss}` : 'fixed';
         if (key !== this._colorKey) {
             this._colorKey = key;
@@ -417,11 +439,11 @@ class SmotHistogramChart extends St.BoxLayout {
         for (let i = 0; i < HISTOGRAM_BUCKETS.length; i++) {
             const bucket = HISTOGRAM_BUCKETS[i];
             const col = new St.BoxLayout({
-                orientation: Clutter.Orientation.VERTICAL,
                 style_class: 'smot-hist-col',
                 x_expand: true,
                 y_align: Clutter.ActorAlign.END,
             });
+            setBoxVertical(col, true);
 
             const countLabel = new St.Label({
                 text: '0',
@@ -431,10 +453,10 @@ class SmotHistogramChart extends St.BoxLayout {
             countLabel.clutter_text.x_align = Clutter.ActorAlign.CENTER;
 
             const track = new St.BoxLayout({
-                orientation: Clutter.Orientation.VERTICAL,
                 style_class: 'smot-hist-track',
                 x_expand: true,
             });
+            setBoxVertical(track, true);
             const spacer = new St.Widget({
                 x_expand: true,
                 y_expand: true,
@@ -481,7 +503,8 @@ class SmotHistogramChart extends St.BoxLayout {
                 const mid = (bucket.min + bucket.max) / 2;
                 fill.set_style(gradedUsageCss(mid));
             } else {
-                fill.set_style(fixedBarFillStyle());
+                fill.set_style(
+                    ensureFixedBarFillCss(this) || fixedBarFillStyle());
             }
         }
     }
@@ -566,14 +589,13 @@ export const DetailSection = GObject.registerClass(
 class SmotDetailSection extends St.BoxLayout {
     _init(title) {
         super._init({
-            orientation: Clutter.Orientation.VERTICAL,
             x_expand: true,
             y_expand: false,
             style_class: 'smot-card',
         });
+        setBoxVertical(this, true);
 
         this._header = new St.BoxLayout({
-            orientation: Clutter.Orientation.HORIZONTAL,
             style_class: 'smot-section-header',
             x_expand: true,
         });
@@ -596,10 +618,10 @@ class SmotDetailSection extends St.BoxLayout {
         this._badgeText = '';
 
         this._content = new St.BoxLayout({
-            orientation: Clutter.Orientation.VERTICAL,
             x_expand: true,
             style_class: 'smot-card-body',
         });
+        setBoxVertical(this._content, true);
         this.add_child(this._content);
     }
 

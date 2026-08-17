@@ -1,4 +1,3 @@
-import Clutter from 'gi://Clutter';
 import GLib from 'gi://GLib';
 import St from 'gi://St';
 
@@ -17,7 +16,7 @@ import {
     WIDE_POPUP_CORE_THRESHOLD,
     coresPerColumn,
 } from './constants.js';
-import {MeterRow} from './widgets.js';
+import {MeterRow, setBoxVertical} from './widgets.js';
 
 /** Scroll height, core grid layout, detail chrome width, memory row visibility. */
 export const IndicatorLayout = {
@@ -163,10 +162,10 @@ export const IndicatorLayout = {
 
             while (this._coreColumns.length <= colIndex) {
                 const column = new St.BoxLayout({
-                    orientation: Clutter.Orientation.VERTICAL,
                     style_class: 'smot-core-column',
                     x_expand: true,
                 });
+                setBoxVertical(column, true);
                 this._coreGrid.add_child(column);
                 this._coreColumns.push(column);
             }

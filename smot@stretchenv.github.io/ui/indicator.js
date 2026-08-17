@@ -35,6 +35,7 @@ import {
     MeterRow,
     loadExtensionIcon,
     makeIoRateRow,
+    setBoxVertical,
 } from './widgets.js';
 
 const SmotIndicator = GObject.registerClass(
@@ -143,11 +144,11 @@ class SmotIndicator extends PanelMenu.Button {
         this.menu.addMenuItem(this._scrollSection);
 
         this._cardsBox = new St.BoxLayout({
-            orientation: Clutter.Orientation.VERTICAL,
             style_class: 'smot-cards',
             x_expand: true,
             y_expand: false,
         });
+        setBoxVertical(this._cardsBox, true);
         this._scrollView = new St.ScrollView({
             style_class: 'smot-scroll vfade',
             overlay_scrollbars: false,
@@ -172,11 +173,11 @@ class SmotIndicator extends PanelMenu.Button {
         this._diskReadLabel = diskRates.primary;
         this._diskWriteLabel = diskRates.secondary;
         this._diskWarnList = new St.BoxLayout({
-            orientation: Clutter.Orientation.VERTICAL,
             style_class: 'smot-disk-warn-list',
             x_expand: true,
             visible: false,
         });
+        setBoxVertical(this._diskWarnList, true);
         this._diskSection.addActor(this._diskWarnList);
         this._diskWarnRows = [];
         this._cardsBox.add_child(this._diskSection);
@@ -244,6 +245,7 @@ class SmotIndicator extends PanelMenu.Button {
             } else if (key === 'usage-bar-appearance') {
                 this._usageBarAppearance = normalizeUsageBarAppearance(
                     this._settings.get_string('usage-bar-appearance'));
+                this._syncFixedBarFill();
                 this._applyUsageBarAppearance();
             } else if (key === 'memory-display') {
                 this._memoryDisplay = this._settings.get_string('memory-display');

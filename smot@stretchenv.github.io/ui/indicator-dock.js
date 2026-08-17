@@ -1,7 +1,8 @@
-import Clutter from 'gi://Clutter';
 import St from 'gi://St';
 
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+
+import {setBoxVertical} from './widgets.js';
 
 /** CSS min-width floors (.smot-menu / dual / wide) — dock grows above these like the popup. */
 const DOCK_WIDTH_DEFAULT = 280;
@@ -91,7 +92,6 @@ export const IndicatorDock = {
             return;
 
         this._dock = new St.BoxLayout({
-            orientation: Clutter.Orientation.VERTICAL,
             // popup-menu-content: Shell/Yaru paints bg, border, fg like the panel popup.
             style_class: 'popup-menu-content smot-dock smot-menu',
             reactive: true,
@@ -99,12 +99,13 @@ export const IndicatorDock = {
             visible: false,
             opacity: 0,
         });
+        setBoxVertical(this._dock, true);
         this._dockBody = new St.BoxLayout({
-            orientation: Clutter.Orientation.VERTICAL,
             style_class: 'smot-dock-body',
             x_expand: true,
             y_expand: true,
         });
+        setBoxVertical(this._dockBody, true);
         this._dock.add_child(this._dockBody);
 
         Main.layoutManager.addChrome(this._dock, {

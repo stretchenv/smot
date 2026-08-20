@@ -6,6 +6,7 @@ import {
     setFixedBarFillCss,
 } from './theme.js';
 import {USAGE_BAR_FIXED} from './constants.js';
+import {actorHasAllocation, actorHasNonZeroAllocation} from './widgets.js';
 
 /** Popup foreground + fixed usage-bar accent sync. */
 export const IndicatorTheme = {
@@ -14,6 +15,9 @@ export const IndicatorTheme = {
         const chrome = (this._dockOpen && this._dock) ? this._dock : this.menu?.box;
         try {
             if (!chrome?.get_stage?.())
+                return;
+            const box = chrome.get_allocation_box?.();
+            if (!box || box.get_width() <= 0 || box.get_height() <= 0)
                 return;
             fg = chrome.get_theme_node().get_foreground_color();
         } catch (_e) {
@@ -33,14 +37,31 @@ export const IndicatorTheme = {
         this._diskSection?.applyFg(css);
         this._netSection?.applyFg(css);
         for (const row of this._diskWarnRows || []) {
-            row.device?.set_style(css);
-            row.message?.set_style(css);
+            if (actorHasAllocation(row.device))
+                row.device.set_style(css);
+            if (actorHasAllocation(row.message))
+                row.message.set_style(css);
         }
         for (const card of this._gpuCards || [])
             card.section?.applyFg(css);
         for (const card of this._npuCards || [])
             card.section?.applyFg(css);
         this._tempSection?.applyFg(css);
+        if (!this._isDetailsOpen?.())
+            return;
+        const sections = [
+            this._cpuSection,
+            this._memSection,
+            this._diskSection,
+            this._netSection,
+            this._tempSection,
+            ...(this._gpuCards || []).map(c => c.section),
+            ...(this._npuCards || []).map(c => c.section),
+        ];
+        const pending = sections.some(s =>
+            s?.visible && s.get_stage?.() && !actorHasNonZeroAllocation(s));
+        if (pending)
+            this._runWhenDetailAllocated(() => this._syncPopupFg());
     },
 
     /**
@@ -59,6 +80,9 @@ export const IndicatorTheme = {
             ? this._dock
             : this.menu?.box;
         if (!source?.get_stage?.())
+            return;
+        const box = source.get_allocation_box?.();
+        if (!box || box.get_width() <= 0 || box.get_height() <= 0)
             return;
         const prev = fixedBarFillCss;
         ensureFixedBarFillCss(source);

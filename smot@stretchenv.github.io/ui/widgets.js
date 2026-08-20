@@ -23,6 +23,21 @@ const SHELL_MAJOR = Number.parseInt(Config.PACKAGE_VERSION, 10);
  * St.BoxLayout: GNOME 46–47 expose `vertical`; 48+ use `orientation`.
  * Do not pass either in the constructor — 46 throws on `orientation`.
  */
+/** True when actor is on stage and Clutter has assigned an allocation box. */
+export function actorHasAllocation(actor) {
+    if (!actor?.get_stage?.())
+        return false;
+    return !!actor.get_allocation_box?.();
+}
+
+/** True when actor is on stage with a non-zero allocation box. */
+export function actorHasNonZeroAllocation(actor) {
+    if (!actorHasAllocation(actor))
+        return false;
+    const box = actor.get_allocation_box();
+    return box.get_width() > 0 && box.get_height() > 0;
+}
+
 export function setBoxVertical(box, vertical) {
     if (!box)
         return;
@@ -178,7 +193,7 @@ class SmotMeterRow extends St.BoxLayout {
      * @param {string} labelText
      * @param {{valueProbe?: string, labelProbe?: string}} [params]
      *   valueProbe sizes the right-hand slot (default '100%'). Use a wider
-     *   probe for absolute values (e.g. '999.9G'). labelProbe locks the left
+     *   probe for absolute values (e.g. FORMAT_BYTES_VALUE_PROBE). labelProbe locks the left
      *   label to that width so stacked bars (Usage / VRAM) share one length.
      */
     _init(labelText, params = {}) {
@@ -227,6 +242,7 @@ class SmotMeterRow extends St.BoxLayout {
             y_align: Clutter.ActorAlign.CENTER,
         });
         this._value.clutter_text.x_align = Clutter.ActorAlign.END;
+        this._value.clutter_text.ellipsize = Pango.EllipsizeMode.NONE;
         this._valueBox = new St.Widget({
             style_class: 'smot-row-value-box',
             layout_manager: new Clutter.BinLayout(),
@@ -276,7 +292,7 @@ class SmotMeterRow extends St.BoxLayout {
     _ensureLabelSlotWidth() {
         if (!this._labelProbe || this._labelSlotWidth > 0)
             return;
-        if (!this.get_stage())
+        if (!actorHasAllocation(this._label))
             return;
         const prev = this._label.text;
         this._label.text = this._labelProbe;
@@ -292,7 +308,7 @@ class SmotMeterRow extends St.BoxLayout {
     _ensureValueSlotWidth() {
         if (this._valueSlotWidth > 0)
             return;
-        if (!this.get_stage())
+        if (!actorHasAllocation(this._valueBox))
             return;
         const prev = this._value.text;
         this._value.text = this._valueProbe;
@@ -309,7 +325,7 @@ class SmotMeterRow extends St.BoxLayout {
     }
 
     _applyValueSlotWidth() {
-        if (this._valueSlotWidth <= 0)
+        if (this._valueSlotWidth <= 0 || !actorHasAllocation(this._valueBox))
             return;
         // Inline style preferred-size is what BoxLayout honors; set_width alone
         // is not enough when the label text gets shorter/longer.
@@ -349,11 +365,18 @@ class SmotMeterRow extends St.BoxLayout {
         this._paintFill();
     }
 
+    _trackAllocated() {
+        const alloc = this._track?.allocation;
+        return !!(alloc && alloc.get_width() > 0);
+    }
+
     /**
      * Keep pill ends round at low %. St clips border-radius when fill width
      * is under 2× the CSS radius (~4px), which looks square at ~2–3%.
      */
     _paintFill() {
+        if (!this.get_stage() || !this._trackAllocated())
+            return;
         const fill = Math.max(0, this._lastWidth);
         const radius = fill <= 0 ? 0 : Math.min(4, Math.floor(fill / 2));
         const style = `${this._fillBgCss || ''}border-radius: ${radius}px;`;
@@ -386,7 +409,7 @@ class SmotMeterRow extends St.BoxLayout {
             this._percent = pct;
             if (this._appearance === USAGE_BAR_GRADED)
                 this._applyFillStyle(pct);
-            if (custom)
+            if (custom && this._trackAllocated())
                 this._syncFillWidth();
             return;
         }
@@ -398,7 +421,8 @@ class SmotMeterRow extends St.BoxLayout {
         this._value.text = text;
         this._applyValueSlotWidth();
         this._applyFillStyle(pct);
-        this._syncFillWidth();
+        if (this._trackAllocated())
+            this._syncFillWidth();
     }
 
     setKey(text) {
@@ -551,6 +575,7 @@ class SmotKeyValueRow extends St.BoxLayout {
             y_align: Clutter.ActorAlign.CENTER,
         });
         this._value.clutter_text.x_align = Clutter.ActorAlign.END;
+        this._value.clutter_text.ellipsize = Pango.EllipsizeMode.NONE;
         this.add_child(this._key);
         this.add_child(this._value);
         this._lastKey = key;
@@ -648,9 +673,9 @@ class SmotDetailSection extends St.BoxLayout {
     applyFg(css) {
         if (!css)
             return;
-        this.set_style(css);
-        this._title.set_style(css);
-        this._badge.set_style(css);
-        this._content.set_style(css);
+        for (const actor of [this, this._title, this._badge, this._content]) {
+            if (actorHasAllocation(actor))
+                actor.set_style(css);
+        }
     }
 });

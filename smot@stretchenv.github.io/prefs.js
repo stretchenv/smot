@@ -1,6 +1,5 @@
 import Adw from 'gi://Adw';
 import Gio from 'gi://Gio';
-import GLib from 'gi://GLib';
 import Gtk from 'gi://Gtk';
 
 import {
@@ -20,6 +19,7 @@ import {
     serializeTemperatureFields,
     temperatureKey,
 } from './stats.js';
+import {readTextAsync} from './lib/paths.js';
 
 const CORE_DISPLAY_NONE = 'none';
 const CORE_DISPLAY_PER_CORE = 'per-core';
@@ -35,21 +35,16 @@ const MEMORY_DISPLAY_DETAILED = 'detailed';
 const DETAIL_VIEW_POPUP = 'popup';
 const DETAIL_VIEW_DOCK = 'dock';
 
-function detectCoreCount() {
-    try {
-        const [ok, bytes] = GLib.file_get_contents('/proc/stat');
-        if (!ok || !bytes)
-            return 0;
-        const text = new TextDecoder('utf-8').decode(bytes);
-        let count = 0;
-        for (const line of text.split('\n')) {
-            if (/^cpu\d+\s/.test(line))
-                count += 1;
-        }
-        return count;
-    } catch {
+async function detectCoreCount() {
+    const text = await readTextAsync('/proc/stat');
+    if (!text)
         return 0;
+    let count = 0;
+    for (const line of text.split('\n')) {
+        if (/^cpu\d+\s/.test(line))
+            count += 1;
     }
+    return count;
 }
 
 /** Style modes when core usage is shown (not including off). */
@@ -198,10 +193,10 @@ function addComboRow(group, settings, key, modes, title) {
     });
 }
 
-function addTemperatureFieldsGroups(page, settings) {
+async function addTemperatureFieldsGroups(page, settings) {
     let sensors = [];
     try {
-        sensors = discoverTemperatureSensors();
+        sensors = await discoverTemperatureSensors();
     } catch (e) {
         printerr(`smot: sensor discovery failed: ${e}\n`);
     }
@@ -279,7 +274,7 @@ function addTemperatureFieldsGroups(page, settings) {
 }
 
 /** Same nested pattern as Service Monitor: Adw.Dialog.present(prefsWindow). */
-function openTemperatureFieldsDialog(window, settings) {
+async function openTemperatureFieldsDialog(window, settings) {
     const dialog = new Adw.Dialog({
         title: _('Temperature'),
         content_width: 520,
@@ -293,7 +288,7 @@ function openTemperatureFieldsDialog(window, settings) {
     toolbar.add_top_bar(header);
 
     const page = new Adw.PreferencesPage();
-    addTemperatureFieldsGroups(page, settings);
+    await addTemperatureFieldsGroups(page, settings);
 
     const scrolled = new Gtk.ScrolledWindow({
         vexpand: true,
@@ -433,7 +428,13 @@ function openNamedDeviceDialog(window, settings, opts) {
     dialog.present(window);
 }
 
-function openDiskDevicesDialog(window, settings) {
+async function openDiskDevicesDialog(window, settings) {
+    let entries = [];
+    try {
+        entries = await listPhysicalDiskEntries();
+    } catch {
+        entries = [];
+    }
     openNamedDeviceDialog(window, settings, {
         dialogTitle: _('Disks to monitor'),
         modeDescription: _('Physical whole disks only (not partitions). Turning “monitor all” off uses the ticked disks; none ticked means no disk I/O. The list is kept when monitoring all.'),
@@ -444,12 +445,18 @@ function openDiskDevicesDialog(window, settings) {
         emptyTitle: _('No physical disks were found on this system.'),
         filterEnabledKey: 'disk-filter-enabled',
         settingKey: 'disk-devices',
-        entries: listPhysicalDiskEntries(),
+        entries,
         normalize: normalizeDiskDevices,
     });
 }
 
-function openNetworkInterfacesDialog(window, settings) {
+async function openNetworkInterfacesDialog(window, settings) {
+    let entries = [];
+    try {
+        entries = await listNetworkInterfaceEntries();
+    } catch {
+        entries = [];
+    }
     openNamedDeviceDialog(window, settings, {
         dialogTitle: _('Interfaces to monitor'),
         modeDescription: _('Hardware network interfaces only (not bridges, virtual, or loopback). Turning “monitor all” off uses the ticked interfaces; none ticked means no network I/O. The list is kept when monitoring all.'),
@@ -460,13 +467,13 @@ function openNetworkInterfacesDialog(window, settings) {
         emptyTitle: _('No hardware network interfaces were found on this system.'),
         filterEnabledKey: 'network-filter-enabled',
         settingKey: 'network-interfaces',
-        entries: listNetworkInterfaceEntries(),
+        entries,
         normalize: normalizeNetworkInterfaces,
     });
 }
 
 export default class SmotPreferences extends ExtensionPreferences {
-    fillPreferencesWindow(window) {
+    async fillPreferencesWindow(window) {
         this._window = window;
         const settings = this.getSettings();
         window._settings = settings;
@@ -516,7 +523,14 @@ export default class SmotPreferences extends ExtensionPreferences {
         page.add(barGroup);
         addComboRow(barGroup, settings, 'usage-bar-appearance', barModes, _('Bar appearance'));
 
-        const coreCount = detectCoreCount();
+        const [coreCount, nvidia, intel] = await Promise.all([
+            detectCoreCount(),
+            discoverNvidiaGpus().catch(() => []),
+            discoverIntelNpus().catch(() => []),
+        ]);
+        const hasGpu = nvidia.length > 0;
+        const hasNpu = intel.length > 0;
+
         const coreGroup = new Adw.PreferencesGroup({
             title: _('CPU cores'),
             description: coreCount > PER_CORE_MAX_CORES
@@ -640,19 +654,6 @@ export default class SmotPreferences extends ExtensionPreferences {
         syncTempCustomise();
         settings.connect('changed::show-temperature', syncTempCustomise);
         tempGroup.add(customiseRow);
-
-        let hasGpu = false;
-        let hasNpu = false;
-        try {
-            hasGpu = discoverNvidiaGpus().length > 0;
-        } catch {
-            hasGpu = false;
-        }
-        try {
-            hasNpu = discoverIntelNpus().length > 0;
-        } catch {
-            hasNpu = false;
-        }
 
         if (hasGpu) {
             const gpuGroup = new Adw.PreferencesGroup({

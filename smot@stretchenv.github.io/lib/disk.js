@@ -1,4 +1,4 @@
-import {readText} from './paths.js';
+import {readTextAsync} from './paths.js';
 import {cleanSysAttr} from './sanitize.js';
 
 /** Whole disks only — skip partitions, loop, ram, dm/md (avoid double-count). */
@@ -26,21 +26,11 @@ export function normalizeDiskDevices(names) {
     return out;
 }
 
-/** @returns {string[]} Sorted physical whole-disk names from /proc/diskstats. */
-export function listPhysicalDiskNames() {
-    return listPhysicalDiskEntries().map(e => e.name);
-}
-
-/**
- * Physical disks with optional model/serial subtitle for prefs.
- * @returns {{name: string, subtitle: string}[]}
- */
-export function listPhysicalDiskEntries() {
-    const text = readText('/proc/diskstats');
+function parsePhysicalDiskNames(text) {
     if (!text)
         return [];
 
-    const entries = [];
+    const names = [];
     const seen = new Set();
     let lineStart = 0;
     const len = text.length;
@@ -67,23 +57,43 @@ export function listPhysicalDiskEntries() {
         const name = text.substring(nameStart, i);
         if (isPhysicalDiskName(name) && !seen.has(name)) {
             seen.add(name);
-            entries.push({
-                name,
-                subtitle: formatDiskSubtitle(name),
-            });
+            names.push(name);
         }
         lineStart = lineEnd + 1;
     }
 
-    entries.sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
+    names.sort();
+    return names;
+}
+
+/** @returns {Promise<string[]>} Sorted physical whole-disk names from /proc/diskstats. */
+export async function listPhysicalDiskNames(cancellable = null) {
+    const text = await readTextAsync('/proc/diskstats', cancellable);
+    return parsePhysicalDiskNames(text);
+}
+
+/**
+ * Physical disks with optional model/serial subtitle for prefs.
+ * @returns {Promise<{name: string, subtitle: string}[]>}
+ */
+export async function listPhysicalDiskEntries(cancellable = null) {
+    const names = await listPhysicalDiskNames(cancellable);
+    const entries = await Promise.all(names.map(async name => ({
+        name,
+        subtitle: await formatDiskSubtitle(name, cancellable),
+    })));
     return entries;
 }
 
-export function formatDiskSubtitle(name) {
+export async function formatDiskSubtitle(name, cancellable = null) {
     if (!isPhysicalDiskName(name))
         return '';
-    const model = cleanSysAttr(readText(`/sys/block/${name}/device/model`) || '');
-    const serial = cleanSysAttr(readText(`/sys/block/${name}/device/serial`) || '');
+    const [modelRaw, serialRaw] = await Promise.all([
+        readTextAsync(`/sys/block/${name}/device/model`, cancellable),
+        readTextAsync(`/sys/block/${name}/device/serial`, cancellable),
+    ]);
+    const model = cleanSysAttr(modelRaw || '');
+    const serial = cleanSysAttr(serialRaw || '');
     if (model && serial)
         return `${model} · ${serial}`;
     return model || serial || '';
@@ -92,10 +102,10 @@ export function formatDiskSubtitle(name) {
 /**
  * Sum read/write bytes from /proc/diskstats (sectors × 512).
  * @param {Set<string>|null} allow — if non-null, only these physical disk names.
- * @returns {{readBytes: number, writeBytes: number}|null}
+ * @returns {Promise<{readBytes: number, writeBytes: number}|null>}
  */
-export function readDiskByteTotals(allow = null) {
-    const text = readText('/proc/diskstats');
+export async function readDiskByteTotals(allow = null, cancellable = null) {
+    const text = await readTextAsync('/proc/diskstats', cancellable);
     if (!text)
         return null;
 

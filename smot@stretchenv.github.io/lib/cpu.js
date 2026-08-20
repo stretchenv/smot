@@ -1,11 +1,8 @@
-import {readText} from './paths.js';
-
 /**
  * Parse /proc/stat into parallel idle/total arrays.
  * @returns {number} cpu line count (index 0 = aggregate)
  */
-export function parseCpuTimes(idleOut, totalOut) {
-    const text = readText('/proc/stat');
+export function parseCpuTimes(text, idleOut, totalOut) {
     if (!text)
         return 0;
 
@@ -43,10 +40,12 @@ export function parseCpuTimes(idleOut, totalOut) {
                 value = value * 10 + d;
                 i++;
             }
-            // user nice system idle iowait ...
+            // user nice system idle iowait irq softirq steal guest guest_nice
             if (field === 3 || field === 4)
                 idle += value;
-            total += value;
+            // guest/guest_nice are already included in user/nice; skip in total
+            if (field !== 8 && field !== 9)
+                total += value;
             field++;
         }
 

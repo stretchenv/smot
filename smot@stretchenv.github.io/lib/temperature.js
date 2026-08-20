@@ -1,6 +1,10 @@
-import Gio from 'gi://Gio';
-
-import {isAllowedPath, readIntFile, readText} from './paths.js';
+import {
+    isAllowedPath,
+    listDirNamesAsync,
+    readIntFileAsync,
+    readSymlinkTargetAsync,
+    readTextAsync,
+} from './paths.js';
 import {sanitizeInstance, sanitizeLabel} from './sanitize.js';
 import {gpuTempKey} from './pci.js';
 import {discoverNvidiaGpus} from './gpu.js';
@@ -19,26 +23,18 @@ export function sensorPriority(chip, label) {
     return 5;
 }
 
-function readHwmonDeviceAttr(hwmonBase, attr) {
-    return sanitizeInstance(readText(`${hwmonBase}/device/${attr}`)?.trim());
+async function readHwmonDeviceAttr(hwmonBase, attr, cancellable) {
+    return sanitizeInstance(
+        (await readTextAsync(`${hwmonBase}/device/${attr}`, cancellable))?.trim());
 }
 
 /** Basename of hwmon device symlink (e.g. i2c `1-0018`, `nvme0`, `coretemp.0`). */
-function readHwmonDeviceBasename(hwmonBase) {
-    try {
-        const file = Gio.File.new_for_path(`${hwmonBase}/device`);
-        const info = file.query_info(
-            'standard::symlink-target',
-            Gio.FileQueryInfoFlags.NOFOLLOW_SYMLINKS,
-            null);
-        const target = info.get_symlink_target();
-        if (!target)
-            return '';
-        const parts = target.split('/').filter(p => p && p !== '.' && p !== '..');
-        return sanitizeInstance(parts[parts.length - 1] || '');
-    } catch {
+async function readHwmonDeviceBasename(hwmonBase, cancellable) {
+    const target = await readSymlinkTargetAsync(`${hwmonBase}/device`, cancellable);
+    if (!target)
         return '';
-    }
+    const parts = target.split('/').filter(p => p && p !== '.' && p !== '..');
+    return sanitizeInstance(parts[parts.length - 1] || '');
 }
 
 function isI2cClientName(name) {
@@ -52,11 +48,13 @@ function isI2cClientName(name) {
  * (serial / PCI / i2c / nvmeN / platform basename) so adding another similar
  * device later does not rename existing keys. Avoid bare hwmonN — it renumbers.
  */
-function resolveChipInstance(hwmonBase, chip, hwmonName) {
-    const model = readHwmonDeviceAttr(hwmonBase, 'model');
-    const serial = readHwmonDeviceAttr(hwmonBase, 'serial');
-    const address = readHwmonDeviceAttr(hwmonBase, 'address');
-    const devBase = readHwmonDeviceBasename(hwmonBase);
+async function resolveChipInstance(hwmonBase, chip, hwmonName, cancellable) {
+    const [model, serial, address, devBase] = await Promise.all([
+        readHwmonDeviceAttr(hwmonBase, 'model', cancellable),
+        readHwmonDeviceAttr(hwmonBase, 'serial', cancellable),
+        readHwmonDeviceAttr(hwmonBase, 'address', cancellable),
+        readHwmonDeviceBasename(hwmonBase, cancellable),
+    ]);
     const shortSerial = serial ? serial.replace(/\s+/g, '').slice(-6) : '';
     const shortAddress = address ? address.replace(/^0000:/, '') : '';
 
@@ -117,73 +115,68 @@ export function makeGpuTempSensor(pciShort) {
 }
 
 /** Used by collector and discoverTemperatureSensors; not re-exported from barrel. */
-export function discoverSensors() {
+export async function discoverSensors(cancellable = null) {
     const found = [];
+    const hwmonNames = await listDirNamesAsync('/sys/class/hwmon', cancellable);
 
-    try {
-        const hwmonDir = Gio.File.new_for_path('/sys/class/hwmon');
-        const enumerator = hwmonDir.enumerate_children(
-            'standard::name',
-            Gio.FileQueryInfoFlags.NONE,
-            null);
+    for (const hwmonName of hwmonNames) {
+        if (!/^hwmon\d{1,3}$/.test(hwmonName))
+            continue;
 
-        let info;
-        while ((info = enumerator.next_file(null)) !== null) {
-            const hwmonName = info.get_name();
-            if (!/^hwmon\d{1,3}$/.test(hwmonName))
+        const base = `/sys/class/hwmon/${hwmonName}`;
+        const chip = sanitizeLabel(
+            (await readTextAsync(`${base}/name`, cancellable))?.trim()) || hwmonName;
+        const instance = await resolveChipInstance(base, chip, hwmonName, cancellable);
+
+        const slotReads = [];
+        for (let i = 1; i <= 16; i++) {
+            const inputPath = `${base}/temp${i}_input`;
+            if (!isAllowedPath(inputPath))
                 continue;
-
-            const base = `/sys/class/hwmon/${hwmonName}`;
-            const chip = sanitizeLabel(readText(`${base}/name`)?.trim()) || hwmonName;
-            const instance = resolveChipInstance(base, chip, hwmonName);
-
-            const temps = [];
-            let packageId = null;
-            for (let i = 1; i <= 16; i++) {
-                const inputPath = `${base}/temp${i}_input`;
-                if (!isAllowedPath(inputPath))
-                    continue;
-                if (readIntFile(inputPath) === null)
-                    continue;
-
+            slotReads.push((async () => {
+                const milli = await readIntFileAsync(inputPath, cancellable);
+                if (milli === null)
+                    return null;
                 const label = sanitizeLabel(
-                    readText(`${base}/temp${i}_label`)?.trim()) || `temp${i}`;
-                const pkg = packageIdFromLabel(label);
-                if (pkg != null)
-                    packageId = pkg;
-                temps.push({label, inputPath});
-            }
-
-            if (temps.length === 0)
-                continue;
-
-            for (const temp of temps) {
-                found.push({
-                    chip,
-                    instance,
-                    label: temp.label,
-                    packageId,
-                    inputPath: temp.inputPath,
-                    priority: sensorPriority(chip, temp.label),
-                    display: formatSensorDisplay(instance, temp.label, packageId),
-                });
-            }
+                    (await readTextAsync(`${base}/temp${i}_label`, cancellable))?.trim())
+                    || `temp${i}`;
+                return {label, inputPath};
+            })());
         }
-        enumerator.close(null);
-    } catch {
-        // hwmon unavailable
+        const temps = (await Promise.all(slotReads)).filter(Boolean);
+
+        if (temps.length === 0)
+            continue;
+
+        let packageId = null;
+        for (const temp of temps) {
+            const pkg = packageIdFromLabel(temp.label);
+            if (pkg != null)
+                packageId = pkg;
+        }
+        for (const temp of temps) {
+            found.push({
+                chip,
+                instance,
+                label: temp.label,
+                packageId,
+                inputPath: temp.inputPath,
+                priority: sensorPriority(chip, temp.label),
+                display: formatSensorDisplay(instance, temp.label, packageId),
+            });
+        }
     }
 
     if (found.length === 0) {
-        for (let i = 0; i < 16; i++) {
+        const zones = await Promise.all(Array.from({length: 16}, async (_, i) => {
             const typePath = `/sys/class/thermal/thermal_zone${i}/type`;
             const tempPath = `/sys/class/thermal/thermal_zone${i}/temp`;
-            const type = sanitizeLabel(readText(typePath)?.trim());
-            if (!type || readIntFile(tempPath) === null)
-                continue;
-            // Include zone index so duplicate type names stay unique/stable.
+            const type = sanitizeLabel(
+                (await readTextAsync(typePath, cancellable))?.trim());
+            if (!type || await readIntFileAsync(tempPath, cancellable) === null)
+                return null;
             const instance = `${type} (thermal_zone${i})`;
-            found.push({
+            return {
                 chip: 'thermal',
                 instance,
                 label: type,
@@ -191,7 +184,11 @@ export function discoverSensors() {
                 inputPath: tempPath,
                 priority: sensorPriority('thermal', type),
                 display: instance,
-            });
+            };
+        }));
+        for (const z of zones) {
+            if (z)
+                found.push(z);
         }
     }
 
@@ -283,10 +280,9 @@ export function resolveTemperatureRow(temp, config) {
 }
 
 /** Discover sensors for prefs UI (same path allowlist as the panel collector). */
-export function discoverTemperatureSensors() {
-    const sensors = discoverSensors();
-    for (const gpu of discoverNvidiaGpus()) {
+export async function discoverTemperatureSensors(cancellable = null) {
+    const sensors = await discoverSensors(cancellable);
+    for (const gpu of await discoverNvidiaGpus(cancellable))
         sensors.push(makeGpuTempSensor(gpu.pciShort));
-    }
     return sensors;
 }

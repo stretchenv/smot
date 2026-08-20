@@ -302,9 +302,9 @@
   min-width: 64px;
 }
 
-/* Fallback before JS measures "100%" into an inline px lock. */
+/* Fallback before JS measures the value probe into an inline px lock. */
 .smot-row-value-box {
-  min-width: 3.25em;
+  min-width: 4.5em;
 }
 
 .smot-row-value {

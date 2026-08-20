@@ -1,7 +1,6 @@
 import GLib from 'gi://GLib';
-import Gio from 'gi://Gio';
 
-import {readText} from './paths.js';
+import {listDirNamesAsync, readTextAsync} from './paths.js';
 import {NVIDIA_VENDOR, normalizePciShort, nvidiaGpuCardTitle} from './pci.js';
 
 export const MAX_NVIDIA_GPUS = 8;
@@ -13,50 +12,44 @@ const PCI_FULL_RE = /^[0-9a-f]{4}:[0-9a-f]{2}:[0-9a-f]{2}\.[0-7]$/i;
  * Probe NVIDIA display/3D GPUs via sysfs PCI vendor/class.
  * Metrics (including GPU index for the card title) come from nvidia-smi.
  */
-export function discoverNvidiaGpus() {
+export async function discoverNvidiaGpus(cancellable = null) {
     const found = [];
-    try {
-        const pciDir = Gio.File.new_for_path('/sys/bus/pci/devices');
-        const enumerator = pciDir.enumerate_children(
-            'standard::name',
-            Gio.FileQueryInfoFlags.NONE,
-            null);
+    const names = await listDirNamesAsync('/sys/bus/pci/devices', cancellable);
+    const candidates = names.filter(name => PCI_FULL_RE.test(name));
+    const vendors = await Promise.all(candidates.map(name =>
+        readTextAsync(`/sys/bus/pci/devices/${name}/vendor`, cancellable)));
 
-        let info;
-        while ((info = enumerator.next_file(null)) !== null) {
-            const name = info.get_name();
-            if (!PCI_FULL_RE.test(name))
-                continue;
+    const nvidia = [];
+    for (let i = 0; i < candidates.length; i++) {
+        const vendor = vendors[i]?.trim().toLowerCase();
+        if (vendor === NVIDIA_VENDOR)
+            nvidia.push(candidates[i]);
+    }
 
-            const base = `/sys/bus/pci/devices/${name}`;
-            const vendor = readText(`${base}/vendor`)?.trim().toLowerCase();
-            if (vendor !== NVIDIA_VENDOR)
-                continue;
+    const classes = await Promise.all(nvidia.map(name =>
+        readTextAsync(`/sys/bus/pci/devices/${name}/class`, cancellable)));
 
-            const clsText = readText(`${base}/class`)?.trim();
-            const classNum = Number.parseInt(clsText, 16);
-            if (!Number.isFinite(classNum))
-                continue;
-            const baseClass = (classNum >> 16) & 0xff;
-            const subClass = (classNum >> 8) & 0xff;
-            // 0x0300 VGA controller, 0x0302 3D controller
-            if (baseClass !== 0x03 || (subClass !== 0x00 && subClass !== 0x02))
-                continue;
+    for (let i = 0; i < nvidia.length; i++) {
+        const name = nvidia[i];
+        const classNum = Number.parseInt(classes[i]?.trim(), 16);
+        if (!Number.isFinite(classNum))
+            continue;
+        const baseClass = (classNum >> 16) & 0xff;
+        const subClass = (classNum >> 8) & 0xff;
+        // 0x0300 VGA controller, 0x0302 3D controller
+        if (baseClass !== 0x03 || (subClass !== 0x00 && subClass !== 0x02))
+            continue;
 
-            const pciShort = normalizePciShort(name);
-            if (!pciShort)
-                continue;
+        const pciShort = normalizePciShort(name);
+        if (!pciShort)
+            continue;
 
-            found.push({
-                pci: name.toLowerCase(),
-                pciShort,
-            });
-            if (found.length >= MAX_NVIDIA_GPUS)
-                break;
-        }
-        enumerator.close(null);
-    } catch {
-        // PCI sysfs unavailable
+        found.push({
+            pci: name.toLowerCase(),
+            pciShort,
+        });
+        if (found.length >= MAX_NVIDIA_GPUS)
+            break;
     }
 
     found.sort((a, b) => a.pciShort.localeCompare(b.pciShort));

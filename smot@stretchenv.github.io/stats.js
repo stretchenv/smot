@@ -20,6 +20,7 @@ export {discoverNvidiaGpus} from './lib/gpu.js';
 export {discoverIntelNpus} from './lib/npu.js';
 
 export {
+    FORMAT_BYTES_VALUE_PROBE,
     formatBytesFromKb,
     formatRateParts,
     formatRateBytes,

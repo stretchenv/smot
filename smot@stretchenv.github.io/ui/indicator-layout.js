@@ -20,8 +20,77 @@ import {MeterRow, setBoxVertical} from './widgets.js';
 
 /** Scroll height, core grid layout, detail chrome width, memory row visibility. */
 export const IndicatorLayout = {
+    _detailHasAllocation() {
+        if (!this._scrollView?.get_stage?.())
+            return false;
+        const box = this._scrollView.get_allocation_box();
+        return !!(box && box.get_width() > 0 && box.get_height() > 0);
+    },
+
+    /**
+     * Run after the detail scroll view has been allocated (first popup open).
+     * Deferred one idle tick so child cards/rows are laid out before set_style
+     * and bar width updates (avoids Clutter "needs an allocation" warnings).
+     */
+    _runWhenDetailAllocated(fn) {
+        if (!this._alive || !fn)
+            return;
+        if (!this._detailAllocWork)
+            this._detailAllocWork = [];
+        this._detailAllocWork.push(fn);
+        if (this._detailHasAllocation())
+            this._flushDetailAllocatedWork();
+        else if (!this._detailAllocWaitId && this._scrollView)
+            this._detailAllocWaitId = this._scrollView.connect(
+                'notify::allocation', () => {
+                    if (!this._detailHasAllocation())
+                        return;
+                    if (this._detailAllocWaitId) {
+                        this._scrollView.disconnect(this._detailAllocWaitId);
+                        this._detailAllocWaitId = 0;
+                    }
+                    this._flushDetailAllocatedWork();
+                });
+    },
+
+    _flushDetailAllocatedWork() {
+        if (this._detailAllocFlushId)
+            return;
+        this._detailAllocFlushId = GLib.idle_add(
+            GLib.PRIORITY_DEFAULT_IDLE, () => {
+                this._detailAllocFlushId = 0;
+                if (!this._alive)
+                    return GLib.SOURCE_REMOVE;
+                const batch = this._detailAllocWork || [];
+                this._detailAllocWork = [];
+                for (const fn of batch) {
+                    try {
+                        fn();
+                    } catch (_e) {
+                        // ignore
+                    }
+                }
+                return GLib.SOURCE_REMOVE;
+            });
+    },
+
+    _cancelDetailAllocatedWork() {
+        if (this._detailAllocFlushId) {
+            GLib.source_remove(this._detailAllocFlushId);
+            this._detailAllocFlushId = 0;
+        }
+        if (this._detailAllocWaitId && this._scrollView) {
+            try {
+                this._scrollView.disconnect(this._detailAllocWaitId);
+            } catch (_e) {
+                // ignore
+            }
+            this._detailAllocWaitId = 0;
+        }
+        this._detailAllocWork = [];
+    },
+
     _queueScrollSync() {
-        this._syncScrollMaxHeight();
         if (this._scrollSyncId)
             return;
         this._scrollSyncId = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
@@ -41,11 +110,13 @@ export const IndicatorLayout = {
             return;
 
         if (this._dockOpen) {
+            if (!this._detailHasAllocation())
+                return;
             this._layoutDock();
             return;
         }
 
-        if (!this.menu?.actor)
+        if (!this.menu?.actor || !this._detailHasAllocation())
             return;
 
         const workArea = Main.layoutManager.getWorkAreaForMonitor(

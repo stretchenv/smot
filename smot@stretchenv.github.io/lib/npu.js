@@ -1,6 +1,8 @@
-import Gio from 'gi://Gio';
-
-import {readText, readUintFile} from './paths.js';
+import {
+    listDirNamesAsync,
+    readTextAsync,
+    readUintFileAsync,
+} from './paths.js';
 import {INTEL_VENDOR, pciShortFromUevent} from './pci.js';
 
 export const MAX_NPUS = 4;
@@ -9,48 +11,35 @@ export const MAX_NPUS = 4;
  * Discover Intel NPUs (intel_vpu) via /sys/class/accel.
  * Util comes from cumulative npu_busy_time_us deltas.
  */
-export function discoverIntelNpus() {
-    const found = [];
-    try {
-        const accelDir = Gio.File.new_for_path('/sys/class/accel');
-        const enumerator = accelDir.enumerate_children(
-            'standard::name',
-            Gio.FileQueryInfoFlags.NONE,
-            null);
+export async function discoverIntelNpus(cancellable = null) {
+    const names = await listDirNamesAsync('/sys/class/accel', cancellable);
+    const candidates = names.filter(name => /^accel\d{1,2}$/.test(name));
+    const probed = await Promise.all(candidates.map(async name => {
+        const base = `/sys/class/accel/${name}`;
+        const vendor = (await readTextAsync(`${base}/device/vendor`, cancellable))
+            ?.trim().toLowerCase();
+        if (vendor !== INTEL_VENDOR)
+            return null;
 
-        let info;
-        while ((info = enumerator.next_file(null)) !== null) {
-            const name = info.get_name();
-            if (!/^accel\d{1,2}$/.test(name))
-                continue;
+        const busyPath = `${base}/device/npu_busy_time_us`;
+        if (await readUintFileAsync(busyPath, Number.MAX_SAFE_INTEGER, cancellable) === null)
+            return null;
 
-            const base = `/sys/class/accel/${name}`;
-            const vendor = readText(`${base}/device/vendor`)?.trim().toLowerCase();
-            if (vendor !== INTEL_VENDOR)
-                continue;
+        const pciShort = pciShortFromUevent(
+            await readTextAsync(`${base}/device/uevent`, cancellable));
+        const memPath = `${base}/device/npu_memory_utilization`;
+        const hasMem = await readUintFileAsync(
+            memPath, Number.MAX_SAFE_INTEGER, cancellable) !== null;
 
-            const busyPath = `${base}/device/npu_busy_time_us`;
-            if (readUintFile(busyPath) === null)
-                continue;
+        return {
+            vendor: 'intel',
+            pciShort,
+            busyPath,
+            memPath: hasMem ? memPath : null,
+        };
+    }));
 
-            const pciShort = pciShortFromUevent(readText(`${base}/device/uevent`));
-            const memPath = `${base}/device/npu_memory_utilization`;
-            const hasMem = readUintFile(memPath) !== null;
-
-            found.push({
-                vendor: 'intel',
-                pciShort,
-                busyPath,
-                memPath: hasMem ? memPath : null,
-            });
-            if (found.length >= MAX_NPUS)
-                break;
-        }
-        enumerator.close(null);
-    } catch {
-        // accel sysfs unavailable
-    }
-
+    const found = probed.filter(Boolean);
     found.sort((a, b) => (a.pciShort || '').localeCompare(b.pciShort || ''));
-    return found;
+    return found.slice(0, MAX_NPUS);
 }

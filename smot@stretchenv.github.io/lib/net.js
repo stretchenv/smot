@@ -1,6 +1,8 @@
-import GLib from 'gi://GLib';
-
-import {readText} from './paths.js';
+import {
+    fileExistsAsync,
+    isDirectoryAsync,
+    readTextAsync,
+} from './paths.js';
 import {cleanSysAttr} from './sanitize.js';
 
 export function isCountedNetIface(name) {
@@ -16,19 +18,17 @@ export function isCountedNetIface(name) {
  * Hardware-backed host NIC (has sysfs device link; not bridge/bond/tun/…).
  * Soft interfaces (docker0, virbr0, br-*, veth, …) are excluded.
  */
-export function isHardwareNetIface(name) {
+export async function isHardwareNetIface(name, cancellable = null) {
     if (!isCountedNetIface(name))
         return false;
     const base = `/sys/class/net/${name}`;
-    if (!GLib.file_test(`${base}/device`, GLib.FileTest.EXISTS))
-        return false;
-    if (GLib.file_test(`${base}/bridge`, GLib.FileTest.IS_DIR))
-        return false;
-    if (GLib.file_test(`${base}/bonding`, GLib.FileTest.IS_DIR))
-        return false;
-    if (GLib.file_test(`${base}/tun_flags`, GLib.FileTest.EXISTS))
-        return false;
-    return true;
+    const [hasDev, isBridge, isBond, isTun] = await Promise.all([
+        fileExistsAsync(`${base}/device`, cancellable),
+        isDirectoryAsync(`${base}/bridge`, cancellable),
+        isDirectoryAsync(`${base}/bonding`, cancellable),
+        fileExistsAsync(`${base}/tun_flags`, cancellable),
+    ]);
+    return hasDev && !isBridge && !isBond && !isTun;
 }
 
 /**
@@ -52,28 +52,18 @@ export function normalizeNetworkInterfaces(names) {
     return out;
 }
 
-export function formatNetSubtitle(name) {
+export async function formatNetSubtitle(name, cancellable = null) {
     if (!isCountedNetIface(name))
         return '';
-    return cleanSysAttr(readText(`/sys/class/net/${name}/ifalias`) || '');
+    return cleanSysAttr(
+        (await readTextAsync(`/sys/class/net/${name}/ifalias`, cancellable)) || '');
 }
 
-/** @returns {string[]} Sorted hardware interface names (excludes lo and soft ifaces). */
-export function listNetworkInterfaces() {
-    return listNetworkInterfaceEntries().map(e => e.name);
-}
-
-/**
- * Hardware NICs with optional ifalias subtitle for prefs.
- * @returns {{name: string, subtitle: string}[]}
- */
-export function listNetworkInterfaceEntries() {
-    const text = readText('/proc/net/dev');
+function parseNetDevRows(text) {
     if (!text)
         return [];
 
-    const entries = [];
-    const seen = new Set();
+    const rows = [];
     let lineStart = 0;
     const len = text.length;
     let lineNo = 0;
@@ -101,66 +91,6 @@ export function listNetworkInterfaceEntries() {
         while (nameEnd > nameStart && text.charCodeAt(nameEnd - 1) === 32)
             nameEnd--;
         const name = text.substring(nameStart, nameEnd);
-        if (isHardwareNetIface(name) && !seen.has(name)) {
-            seen.add(name);
-            entries.push({
-                name,
-                subtitle: formatNetSubtitle(name),
-            });
-        }
-        lineStart = lineEnd + 1;
-    }
-
-    entries.sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
-    return entries;
-}
-
-/**
- * Sum rx/tx bytes from /proc/net/dev (hardware NICs only).
- * @param {Set<string>|null} allow — if non-null, only these interfaces.
- * @returns {{rxBytes: number, txBytes: number}|null}
- */
-export function readNetByteTotals(allow = null) {
-    const text = readText('/proc/net/dev');
-    if (!text)
-        return null;
-
-    let rxBytes = 0;
-    let txBytes = 0;
-    let matched = 0;
-    let lineStart = 0;
-    const len = text.length;
-    let lineNo = 0;
-
-    while (lineStart < len) {
-        let lineEnd = text.indexOf('\n', lineStart);
-        if (lineEnd === -1)
-            lineEnd = len;
-        lineNo++;
-        // First two lines are headers
-        if (lineNo <= 2) {
-            lineStart = lineEnd + 1;
-            continue;
-        }
-
-        const colon = text.indexOf(':', lineStart);
-        if (colon === -1 || colon > lineEnd) {
-            lineStart = lineEnd + 1;
-            continue;
-        }
-
-        let nameStart = lineStart;
-        while (nameStart < colon && text.charCodeAt(nameStart) === 32)
-            nameStart++;
-        let nameEnd = colon;
-        while (nameEnd > nameStart && text.charCodeAt(nameEnd - 1) === 32)
-            nameEnd--;
-        const name = text.substring(nameStart, nameEnd);
-        if (!isHardwareNetIface(name) || (allow && !allow.has(name))) {
-            lineStart = lineEnd + 1;
-            continue;
-        }
-        matched++;
 
         let i = colon + 1;
         let field = 0;
@@ -185,9 +115,67 @@ export function readNetByteTotals(allow = null) {
                 tx = value;
             field++;
         }
+        rows.push({name, rx, tx});
+        lineStart = lineEnd + 1;
+    }
+    return rows;
+}
+
+/** @returns {Promise<string[]>} Sorted hardware interface names. */
+export async function listNetworkInterfaces(cancellable = null) {
+    const entries = await listNetworkInterfaceEntries(cancellable);
+    return entries.map(e => e.name);
+}
+
+/**
+ * Hardware NICs with optional ifalias subtitle for prefs.
+ * @returns {Promise<{name: string, subtitle: string}[]>}
+ */
+export async function listNetworkInterfaceEntries(cancellable = null) {
+    const text = await readTextAsync('/proc/net/dev', cancellable);
+    const rows = parseNetDevRows(text);
+    const flags = await Promise.all(
+        rows.map(r => isHardwareNetIface(r.name, cancellable)));
+    const seen = new Set();
+    const entries = [];
+    for (let i = 0; i < rows.length; i++) {
+        const name = rows[i].name;
+        if (!flags[i] || seen.has(name))
+            continue;
+        seen.add(name);
+        entries.push({name, subtitle: ''});
+    }
+    await Promise.all(entries.map(async e => {
+        e.subtitle = await formatNetSubtitle(e.name, cancellable);
+    }));
+    entries.sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
+    return entries;
+}
+
+/**
+ * Sum rx/tx bytes from /proc/net/dev (hardware NICs only).
+ * @param {Set<string>|null} allow — if non-null, only these interfaces.
+ * @returns {Promise<{rxBytes: number, txBytes: number}|null>}
+ */
+export async function readNetByteTotals(allow = null, cancellable = null) {
+    const text = await readTextAsync('/proc/net/dev', cancellable);
+    if (!text)
+        return null;
+
+    const rows = parseNetDevRows(text);
+    const flags = await Promise.all(
+        rows.map(r => isHardwareNetIface(r.name, cancellable)));
+
+    let rxBytes = 0;
+    let txBytes = 0;
+    let matched = 0;
+    for (let i = 0; i < rows.length; i++) {
+        const {name, rx, tx} = rows[i];
+        if (!flags[i] || (allow && !allow.has(name)))
+            continue;
+        matched++;
         rxBytes += rx;
         txBytes += tx;
-        lineStart = lineEnd + 1;
     }
 
     if (allow && matched === 0)

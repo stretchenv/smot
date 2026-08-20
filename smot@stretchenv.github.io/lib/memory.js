@@ -1,5 +1,3 @@
-import {readText} from './paths.js';
-
 export const MEM_KEYS = {
     MemTotal: 'total',
     MemAvailable: 'available',
@@ -12,8 +10,7 @@ export const MEM_KEYS = {
     SwapFree: 'swapFree',
 };
 
-export function parseMeminfo(out) {
-    const text = readText('/proc/meminfo');
+export function parseMeminfo(text, out) {
     if (!text)
         return false;
 

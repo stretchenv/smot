@@ -1,4 +1,5 @@
 import GLib from 'gi://GLib';
+import Gio from 'gi://Gio';
 
 export const DECODER = new TextDecoder('utf-8');
 export const MAX_READ_BYTES = 64 * 1024;
@@ -45,35 +46,42 @@ export function isAllowedPath(path) {
     return false;
 }
 
+function decodeBytes(bytes) {
+    const size = bytes.byteLength ?? bytes.length ?? 0;
+    if (size === 0 || size > MAX_READ_BYTES)
+        return null;
+    return typeof bytes === 'string' ? bytes : DECODER.decode(bytes);
+}
+
 /**
- * Read a small text file from an allowlisted path.
- * Rejects oversized payloads; never executes content.
+ * Read a small allowlisted text file without blocking the main loop.
+ * @returns {Promise<string|null>}
  */
-export function readText(path) {
-    if (!isAllowedPath(path))
-        return null;
-
-    try {
-        const [ok, bytes] = GLib.file_get_contents(path);
-        if (!ok || !bytes)
-            return null;
-        const size = bytes.byteLength ?? bytes.length ?? 0;
-        if (size === 0 || size > MAX_READ_BYTES)
-            return null;
-        return typeof bytes === 'string' ? bytes : DECODER.decode(bytes);
-    } catch {
-        return null;
-    }
+export function readTextAsync(path, cancellable = null) {
+    return new Promise(resolve => {
+        if (!isAllowedPath(path)) {
+            resolve(null);
+            return;
+        }
+        const file = Gio.File.new_for_path(path);
+        file.load_contents_async(cancellable, (f, res) => {
+            try {
+                const [ok, bytes] = f.load_contents_finish(res);
+                if (!ok || !bytes) {
+                    resolve(null);
+                    return;
+                }
+                resolve(decodeBytes(bytes));
+            } catch {
+                resolve(null);
+            }
+        });
+    });
 }
 
-export function readIntFile(path) {
-    return readUintFile(path, 1e9);
-}
-
-/** Unsigned integer file; maxVal guards overflow (busy_us needs a high ceiling). */
-export function readUintFile(path, maxVal = Number.MAX_SAFE_INTEGER) {
-    const text = readText(path);
-    if (text === null)
+/** Unsigned integer from already-read file text. */
+export function parseUintText(text, maxVal = Number.MAX_SAFE_INTEGER) {
+    if (text === null || text === undefined)
         return null;
     let end = text.length;
     while (end > 0) {
@@ -96,4 +104,129 @@ export function readUintFile(path, maxVal = Number.MAX_SAFE_INTEGER) {
             return null;
     }
     return n;
+}
+
+export async function readUintFileAsync(path, maxVal = Number.MAX_SAFE_INTEGER,
+    cancellable = null) {
+    const text = await readTextAsync(path, cancellable);
+    return parseUintText(text, maxVal);
+}
+
+export async function readIntFileAsync(path, cancellable = null) {
+    return readUintFileAsync(path, 1e9, cancellable);
+}
+
+export function fileExistsAsync(path, cancellable = null) {
+    return new Promise(resolve => {
+        const file = Gio.File.new_for_path(path);
+        file.query_info_async(
+            'standard::type',
+            Gio.FileQueryInfoFlags.NONE,
+            GLib.PRIORITY_DEFAULT,
+            cancellable,
+            (f, res) => {
+                try {
+                    f.query_info_finish(res);
+                    resolve(true);
+                } catch {
+                    resolve(false);
+                }
+            });
+    });
+}
+
+export function isDirectoryAsync(path, cancellable = null) {
+    return new Promise(resolve => {
+        const file = Gio.File.new_for_path(path);
+        file.query_info_async(
+            'standard::type',
+            Gio.FileQueryInfoFlags.NONE,
+            GLib.PRIORITY_DEFAULT,
+            cancellable,
+            (f, res) => {
+                try {
+                    const info = f.query_info_finish(res);
+                    resolve(info.get_file_type() === Gio.FileType.DIRECTORY);
+                } catch {
+                    resolve(false);
+                }
+            });
+    });
+}
+
+export function readSymlinkTargetAsync(path, cancellable = null) {
+    return new Promise(resolve => {
+        const file = Gio.File.new_for_path(path);
+        file.query_info_async(
+            'standard::symlink-target',
+            Gio.FileQueryInfoFlags.NOFOLLOW_SYMLINKS,
+            GLib.PRIORITY_DEFAULT,
+            cancellable,
+            (f, res) => {
+                try {
+                    const info = f.query_info_finish(res);
+                    resolve(info.get_symlink_target() || '');
+                } catch {
+                    resolve('');
+                }
+            });
+    });
+}
+
+function closeEnumeratorAsync(enumerator, then) {
+    try {
+        enumerator.close_async(GLib.PRIORITY_DEFAULT, null, (_en, cres) => {
+            try {
+                enumerator.close_finish(cres);
+            } catch {
+                // ignore
+            }
+            then();
+        });
+    } catch {
+        then();
+    }
+}
+
+/** Child names of a directory (empty if missing). */
+export function listDirNamesAsync(dirPath, cancellable = null) {
+    return new Promise(resolve => {
+        const dir = Gio.File.new_for_path(dirPath);
+        dir.enumerate_children_async(
+            'standard::name',
+            Gio.FileQueryInfoFlags.NONE,
+            GLib.PRIORITY_DEFAULT,
+            cancellable,
+            (d, res) => {
+                let enumerator;
+                try {
+                    enumerator = d.enumerate_children_finish(res);
+                } catch {
+                    resolve([]);
+                    return;
+                }
+                const names = [];
+                const pump = () => {
+                    enumerator.next_files_async(
+                        64,
+                        GLib.PRIORITY_DEFAULT,
+                        cancellable,
+                        (en, nres) => {
+                            try {
+                                const files = en.next_files_finish(nres);
+                                if (!files || files.length === 0) {
+                                    closeEnumeratorAsync(enumerator, () => resolve(names));
+                                    return;
+                                }
+                                for (const info of files)
+                                    names.push(info.get_name());
+                                pump();
+                            } catch {
+                                closeEnumeratorAsync(enumerator, () => resolve(names));
+                            }
+                        });
+                };
+                pump();
+            });
+    });
 }

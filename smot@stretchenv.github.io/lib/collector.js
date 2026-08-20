@@ -1,7 +1,7 @@
 import GLib from 'gi://GLib';
 import Gio from 'gi://Gio';
 
-import {readIntFile, readUintFile} from './paths.js';
+import {readIntFileAsync, readTextAsync, readUintFileAsync} from './paths.js';
 import {parseCpuTimes} from './cpu.js';
 import {parseMeminfo} from './memory.js';
 import {gpuTempKey} from './pci.js';
@@ -94,6 +94,8 @@ export class StatsCollector {
         this._npuStats = [];
 
         this._disposed = false;
+        this._sampleBusy = false;
+        this._ioCancellable = new Gio.Cancellable();
 
         this._ioWantDisk = true;
         this._ioWantNet = true;
@@ -220,6 +222,11 @@ export class StatsCollector {
         if (this._disposed)
             return;
         this._disposed = true;
+        try {
+            this._ioCancellable?.cancel();
+        } catch {
+            // ignore
+        }
         this._abortExternalQuery('_gpuQuery', '_gpuQueryBusy');
         this._abortSmartQuery();
         this._smiPath = null;
@@ -292,13 +299,15 @@ export class StatsCollector {
         });
     }
 
-    _ensureSensors(force = false) {
+    async _ensureSensors(force = false) {
         const now = GLib.get_monotonic_time();
         if (!force && this._sensors.length > 0 &&
             now - this._sensorsAt < SENSOR_RESYNC_US)
             return;
 
-        this._sensors = discoverSensors();
+        this._sensors = await discoverSensors(this._ioCancellable);
+        if (this._disposed)
+            return;
         this._sensorsAt = now;
 
         while (this._result._tempViews.length < this._sensors.length + MAX_NVIDIA_GPUS) {
@@ -311,13 +320,15 @@ export class StatsCollector {
         }
     }
 
-    _ensureNvidia(force = false) {
+    async _ensureNvidia(force = false) {
         const now = GLib.get_monotonic_time();
         if (!force && this._nvidiaGpus.length > 0 &&
             now - this._nvidiaAt < SENSOR_RESYNC_US)
             return;
 
-        this._nvidiaGpus = discoverNvidiaGpus();
+        this._nvidiaGpus = await discoverNvidiaGpus(this._ioCancellable);
+        if (this._disposed)
+            return;
         this._nvidiaAt = now;
         if (this._smiPath === undefined)
             this._smiPath = findNvidiaSmi();
@@ -376,13 +387,15 @@ export class StatsCollector {
     }
 
     /** NVIDIA util / VRAM / tempC / power via nvidia-smi (async; uses last good stats). */
-    _sampleGpu() {
+    async _sampleGpu() {
         if (!this._wantGpu) {
             this._gpuStats = [];
             this._abortExternalQuery('_gpuQuery', '_gpuQueryBusy');
             return;
         }
-        this._ensureNvidia(false);
+        await this._ensureNvidia(false);
+        if (this._disposed)
+            return;
         this._kickNvidiaSmiQuery();
     }
 
@@ -390,17 +403,24 @@ export class StatsCollector {
      * Hwmon/thermal sensors, then optional GPU °C from already-sampled _gpuStats.
      * Call after _sampleGpu() so nvidia-smi results are available to merge.
      */
-    _sampleTemps() {
+    async _sampleTemps() {
         if (!this._wantTemp) {
             this._tempCount = 0;
             return;
         }
 
-        this._ensureSensors(false);
+        await this._ensureSensors(false);
+        if (this._disposed)
+            return;
+
+        const millies = await Promise.all(this._sensors.map(sensor =>
+            readIntFileAsync(sensor.inputPath, this._ioCancellable)));
+        if (this._disposed)
+            return;
 
         let count = 0;
         for (let i = 0; i < this._sensors.length; i++) {
-            const milli = readIntFile(this._sensors[i].inputPath);
+            const milli = millies[i];
             if (milli === null)
                 continue;
             const celsius = milli / 1000;
@@ -437,13 +457,15 @@ export class StatsCollector {
         return count;
     }
 
-    _ensureNpus(force = false) {
+    async _ensureNpus(force = false) {
         const now = GLib.get_monotonic_time();
         if (!force && this._intelNpus.length > 0 &&
             now - this._npuAt < SENSOR_RESYNC_US)
             return;
 
-        this._intelNpus = discoverIntelNpus();
+        this._intelNpus = await discoverIntelNpus(this._ioCancellable);
+        if (this._disposed)
+            return;
         this._npuAt = now;
         if (this._intelNpus.length === 0)
             this._intelNpuStats = [];
@@ -454,12 +476,23 @@ export class StatsCollector {
         this._npuStats = this._intelNpuStats.concat();
     }
 
-    _sampleIntelNpus() {
+    async _sampleIntelNpus() {
+        const readings = await Promise.all(this._intelNpus.map(async npu => {
+            const busyUs = await readUintFileAsync(
+                npu.busyPath, Number.MAX_SAFE_INTEGER, this._ioCancellable);
+            let memUsedBytes = null;
+            if (npu.memPath) {
+                memUsedBytes = await readUintFileAsync(
+                    npu.memPath, Number.MAX_SAFE_INTEGER, this._ioCancellable);
+            }
+            return {npu, busyUs, memUsedBytes};
+        }));
+        if (this._disposed)
+            return;
+
         const nowUs = GLib.get_monotonic_time();
         const stats = [];
-
-        for (const npu of this._intelNpus) {
-            const busyUs = readUintFile(npu.busyPath);
+        for (const {npu, busyUs, memUsedBytes} of readings) {
             const key = `intel:${npu.pciShort || npu.busyPath}`;
             const prev = this._npuPrev.get(key);
             let util = null;
@@ -471,10 +504,6 @@ export class StatsCollector {
             }
             if (busyUs != null)
                 this._npuPrev.set(key, {busyUs, wallUs: nowUs});
-
-            let memUsedBytes = null;
-            if (npu.memPath)
-                memUsedBytes = readUintFile(npu.memPath);
 
             stats.push({
                 vendor: 'intel',
@@ -488,9 +517,13 @@ export class StatsCollector {
         this._intelNpuStats = stats;
     }
 
-    _sampleNpus() {
-        this._ensureNpus(false);
-        this._sampleIntelNpus();
+    async _sampleNpus() {
+        await this._ensureNpus(false);
+        if (this._disposed)
+            return;
+        await this._sampleIntelNpus();
+        if (this._disposed)
+            return;
         this._mergeNpuStats();
     }
 
@@ -498,82 +531,105 @@ export class StatsCollector {
      * @param {{detailed?: boolean}} [opts]
      * detailed=true reads GPU / temperatures / NPU (menu open). Panel path skips that I/O.
      */
-    sample({detailed = false} = {}) {
+    async sample({detailed = false} = {}) {
         if (this._disposed)
             return this._result;
+        if (this._sampleBusy)
+            return this._result;
 
-        const count = parseCpuTimes(this._curIdle, this._curTotal);
+        this._sampleBusy = true;
+        try {
+            const [statText, memText] = await Promise.all([
+                readTextAsync('/proc/stat', this._ioCancellable),
+                readTextAsync('/proc/meminfo', this._ioCancellable),
+            ]);
+            if (this._disposed)
+                return this._result;
 
-        let overall = null;
-        let coreCount = 0;
+            const count = parseCpuTimes(statText, this._curIdle, this._curTotal);
 
-        if (this._havePrev && count > 0 && count === this._cpuCount) {
-            for (let i = 0; i < count; i++) {
-                const totalDelta = this._curTotal[i] - this._prevTotal[i];
-                const idleDelta = this._curIdle[i] - this._prevIdle[i];
-                const usage = totalDelta > 0
-                    ? Math.max(0, Math.min(100, (1 - idleDelta / totalDelta) * 100))
-                    : 0;
-                if (i === 0)
-                    overall = usage;
+            let overall = null;
+            let coreCount = 0;
+
+            if (this._havePrev && count > 0 && count === this._cpuCount) {
+                for (let i = 0; i < count; i++) {
+                    const totalDelta = this._curTotal[i] - this._prevTotal[i];
+                    const idleDelta = this._curIdle[i] - this._prevIdle[i];
+                    const usage = totalDelta > 0
+                        ? Math.max(0, Math.min(100, (1 - idleDelta / totalDelta) * 100))
+                        : 0;
+                    if (i === 0)
+                        overall = usage;
+                    else
+                        this._coreUsage[i - 1] = usage;
+                }
+                coreCount = Math.max(0, count - 1);
+            }
+
+            // Swap buffers (pointer swap — no per-tick copies)
+            const tmpIdle = this._prevIdle;
+            const tmpTotal = this._prevTotal;
+            this._prevIdle = this._curIdle;
+            this._prevTotal = this._curTotal;
+            this._curIdle = tmpIdle;
+            this._curTotal = tmpTotal;
+            this._cpuCount = count;
+            this._havePrev = count > 0;
+
+            this._memOk = parseMeminfo(memText, this._memory);
+            await this._sampleIoRates();
+            if (this._disposed)
+                return this._result;
+            this._ensureSmart(false);
+
+            if (detailed) {
+                if (this._wantGpu)
+                    await this._sampleGpu();
+                else {
+                    this._gpuStats = [];
+                    this._abortExternalQuery('_gpuQuery', '_gpuQueryBusy');
+                }
+                if (this._disposed)
+                    return this._result;
+                if (this._wantTemp)
+                    await this._sampleTemps();
                 else
-                    this._coreUsage[i - 1] = usage;
-            }
-            coreCount = Math.max(0, count - 1);
-        }
-
-        // Swap buffers (pointer swap — no per-tick copies)
-        const tmpIdle = this._prevIdle;
-        const tmpTotal = this._prevTotal;
-        this._prevIdle = this._curIdle;
-        this._prevTotal = this._curTotal;
-        this._curIdle = tmpIdle;
-        this._curTotal = tmpTotal;
-        this._cpuCount = count;
-        this._havePrev = count > 0;
-
-        this._memOk = parseMeminfo(this._memory);
-        this._sampleIoRates();
-        this._ensureSmart(false);
-
-        if (detailed) {
-            if (this._wantGpu)
-                this._sampleGpu();
-            else {
-                this._gpuStats = [];
-                this._abortExternalQuery('_gpuQuery', '_gpuQueryBusy');
-            }
-            if (this._wantTemp)
-                this._sampleTemps();
-            else
+                    this._tempCount = 0;
+                if (this._disposed)
+                    return this._result;
+                if (this._wantNpu)
+                    await this._sampleNpus();
+                else {
+                    this._npuStats = [];
+                    this._intelNpuStats = [];
+                }
+            } else {
                 this._tempCount = 0;
-            if (this._wantNpu)
-                this._sampleNpus();
-            else {
-                this._npuStats = [];
-                this._intelNpuStats = [];
             }
-        } else {
-            this._tempCount = 0;
-        }
 
-        const result = this._result;
-        result.cpu = overall;
-        result.coreCount = coreCount;
-        result.coreUsage = this._coreUsage;
-        result.memory = this._memOk ? this._memory : null;
-        result.tempCount = detailed && this._wantTemp ? this._tempCount : 0;
-        result.temperatures = detailed && this._wantTemp ? this._result._tempViews : null;
-        result.gpus = detailed && this._wantGpu && this._gpuStats.length > 0
-            ? this._gpuStats
-            : null;
-        result.npus = detailed && this._wantNpu && this._npuStats.length > 0
-            ? this._npuStats
-            : null;
-        result.io = this._ioRates;
-        result.ioFilter = this._ioFilter;
-        result.diskSmart = this._diskSmartWarnings;
-        return result;
+            if (this._disposed)
+                return this._result;
+
+            const result = this._result;
+            result.cpu = overall;
+            result.coreCount = coreCount;
+            result.coreUsage = this._coreUsage;
+            result.memory = this._memOk ? this._memory : null;
+            result.tempCount = detailed && this._wantTemp ? this._tempCount : 0;
+            result.temperatures = detailed && this._wantTemp ? this._result._tempViews : null;
+            result.gpus = detailed && this._wantGpu && this._gpuStats.length > 0
+                ? this._gpuStats
+                : null;
+            result.npus = detailed && this._wantNpu && this._npuStats.length > 0
+                ? this._npuStats
+                : null;
+            result.io = this._ioRates;
+            result.ioFilter = this._ioFilter;
+            result.diskSmart = this._diskSmartWarnings;
+            return result;
+        } finally {
+            this._sampleBusy = false;
+        }
     }
 
     _ensureSmart(force = false) {
@@ -641,7 +697,7 @@ export class StatsCollector {
             });
     }
 
-    _sampleIoRates() {
+    async _sampleIoRates() {
         const rates = this._ioRates;
         const filter = this._ioFilter;
         rates.diskRead = null;
@@ -658,27 +714,33 @@ export class StatsCollector {
             return;
         }
 
-        if (wantDisk && this._diskAllow) {
-            const all = listPhysicalDiskNames();
+        const c = this._ioCancellable;
+        const [allDisks, allNets, disk, net] = await Promise.all([
+            wantDisk && this._diskAllow ? listPhysicalDiskNames(c) : Promise.resolve(null),
+            wantNet && this._netAllow ? listNetworkInterfaces(c) : Promise.resolve(null),
+            wantDisk ? readDiskByteTotals(this._diskAllow, c) : Promise.resolve(null),
+            wantNet ? readNetByteTotals(this._netAllow, c) : Promise.resolve(null),
+        ]);
+        if (this._disposed)
+            return;
+
+        if (allDisks) {
             let used = 0;
-            for (const name of all) {
+            for (const name of allDisks) {
                 if (this._diskAllow.has(name))
                     used++;
             }
-            filter.disk = {used, total: all.length};
+            filter.disk = {used, total: allDisks.length};
         }
-        if (wantNet && this._netAllow) {
-            const all = listNetworkInterfaces();
+        if (allNets) {
             let used = 0;
-            for (const name of all) {
+            for (const name of allNets) {
                 if (this._netAllow.has(name))
                     used++;
             }
-            filter.net = {used, total: all.length};
+            filter.net = {used, total: allNets.length};
         }
 
-        const disk = wantDisk ? readDiskByteTotals(this._diskAllow) : null;
-        const net = wantNet ? readNetByteTotals(this._netAllow) : null;
         const nowUs = GLib.get_monotonic_time();
         const prev = this._ioPrev;
 
@@ -713,13 +775,13 @@ export class StatsCollector {
         };
     }
 
-    /** Force sensor rediscovery (e.g. on menu open after resume). */
+    /** Force sensor rediscovery on the next sample (e.g. menu open after resume). */
     resyncSensors() {
         if (this._disposed)
             return;
-        this._ensureSensors(true);
-        this._ensureNvidia(true);
-        this._ensureNpus(true);
+        this._sensorsAt = 0;
+        this._nvidiaAt = 0;
+        this._npuAt = 0;
         this._smiPath = undefined;
         this._ensureSmart(true);
     }

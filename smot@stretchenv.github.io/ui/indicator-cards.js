@@ -1,4 +1,5 @@
 import {
+    FORMAT_BYTES_VALUE_PROBE,
     formatBytesFromKb,
     resolveTemperatureRow,
 } from '../stats.js';
@@ -77,7 +78,10 @@ export const IndicatorCards = {
     _ensureGpuCards(gpus) {
         while (this._gpuCards.length < gpus.length) {
             const section = new DetailSection('NVIDIA GPU');
-            const gpuMeter = {valueProbe: '999.9G', labelProbe: 'VRAM in use'};
+            const gpuMeter = {
+                valueProbe: FORMAT_BYTES_VALUE_PROBE,
+                labelProbe: 'VRAM in use',
+            };
             const util = new MeterRow('Usage', gpuMeter);
             util.setAppearance(this._usageBarAppearance);
             const vram = new MeterRow('VRAM in use', gpuMeter);
@@ -99,7 +103,7 @@ export const IndicatorCards = {
                 title: '',
             });
             if (this._menuOpen)
-                this._syncPopupFg();
+                this._runWhenDetailAllocated(() => this._syncPopupFg());
         }
         for (let i = 0; i < this._gpuCards.length; i++)
             this._gpuCards[i].section.visible = i < gpus.length;
@@ -181,7 +185,7 @@ export const IndicatorCards = {
                 vendor: '',
             });
             if (this._menuOpen)
-                this._syncPopupFg();
+                this._runWhenDetailAllocated(() => this._syncPopupFg());
         }
         for (let i = 0; i < this._npuCards.length; i++)
             this._npuCards[i].section.visible = i < npus.length;

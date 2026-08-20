@@ -8,6 +8,7 @@ import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
 import {
     StatsCollector,
+    FORMAT_BYTES_VALUE_PROBE,
     formatBytesFromKb,
     formatPercent,
     parseTemperatureFields,
@@ -62,6 +63,9 @@ class SmotIndicator extends PanelMenu.Button {
         this._coresReady = false;
         this._layoutPerCol = 0;
         this._alive = true;
+        this._refreshBusy = false;
+        this._refreshQueued = false;
+        this._primeSample = true;
         this._coreDisplay = this._settings.get_string('core-display');
         this._usageBarAppearance = normalizeUsageBarAppearance(
             this._settings.get_string('usage-bar-appearance'));
@@ -73,6 +77,9 @@ class SmotIndicator extends PanelMenu.Button {
         this._refreshIntervalSec = this._clampRefreshInterval(
             this._settings.get_int('refresh-interval-sec'));
         this._scrollSyncId = 0;
+        this._detailAllocWaitId = 0;
+        this._detailAllocFlushId = 0;
+        this._detailAllocWork = [];
         this._sessionGuardIds = [];
         this._showDiskIo = this._settings.get_boolean('show-disk-io');
         this._showNetworkIo = this._settings.get_boolean('show-network-io');
@@ -220,7 +227,9 @@ class SmotIndicator extends PanelMenu.Button {
         this._histogramChart.visible = false;
         this._cpuSection.addActor(this._histogramChart);
 
-        this._memUsedRow = new MeterRow('Used', {valueProbe: '999.9G'});
+        this._memUsedRow = new MeterRow('Used', {
+            valueProbe: FORMAT_BYTES_VALUE_PROBE,
+        });
         this._memUsedRow.setAppearance(this._usageBarAppearance);
         this._memSection.addActor(this._memUsedRow);
         this._memRows = {};
@@ -235,7 +244,6 @@ class SmotIndicator extends PanelMenu.Button {
         this._tempSection.visible = false;
 
         this._applyDetailHost();
-        this._collector.sample({detailed: false});
 
         this._settingsChangedId = this._settings.connect('changed', (_s, key) => {
             if (!this._alive)
@@ -311,18 +319,24 @@ class SmotIndicator extends PanelMenu.Button {
                     }
                     return;
                 }
-                this._syncPopupFg();
-                this._syncFixedBarFill();
                 this._collector.resyncSensors();
                 this._refresh();
-                this._queueScrollSync();
+                this._runWhenDetailAllocated(() => {
+                    this._syncPopupFg();
+                    this._syncFixedBarFill();
+                    this._queueScrollSync();
+                });
+            } else {
+                this._cancelDetailAllocatedWork();
             }
         });
         this._menuStyleId = this.menu.box.connect('style-changed', () => {
             if (this._alive && this._menuOpen) {
-                this._syncPopupFg();
-                this._syncFixedBarFill();
-                this._queueScrollSync();
+                this._runWhenDetailAllocated(() => {
+                    this._syncPopupFg();
+                    this._syncFixedBarFill();
+                    this._queueScrollSync();
+                });
             }
         });
 
@@ -378,6 +392,7 @@ class SmotIndicator extends PanelMenu.Button {
 
     _onDestroy() {
         this._alive = false;
+        this._cancelDetailAllocatedWork();
         this._disconnectSessionGuards();
         this._destroyDockChrome();
         if (this._timeoutId) {
@@ -465,11 +480,33 @@ class SmotIndicator extends PanelMenu.Button {
     _refresh() {
         if (!this._alive || !this._collector)
             return;
+        if (this._refreshBusy) {
+            this._refreshQueued = true;
+            return;
+        }
+        this._refreshBusy = true;
         const detailed = this._isDetailsOpen();
-        const sample = this._collector.sample({detailed});
-        this._updatePanel(sample);
-        if (detailed)
-            this._updateDetails(sample);
+        this._collector.sample({detailed}).then(sample => {
+            if (!this._alive || !this._collector)
+                return;
+            this._updatePanel(sample);
+            if (detailed && this._isDetailsOpen()) {
+                this._runWhenDetailAllocated(() =>
+                    this._updateDetails(sample));
+            }
+            if (this._primeSample) {
+                this._primeSample = false;
+                this._refreshQueued = true;
+            }
+        }).catch(_e => {
+            // Ignore cancelled I/O after destroy
+        }).finally(() => {
+            this._refreshBusy = false;
+            if (this._refreshQueued && this._alive) {
+                this._refreshQueued = false;
+                this._refresh();
+            }
+        });
     }
 });
 

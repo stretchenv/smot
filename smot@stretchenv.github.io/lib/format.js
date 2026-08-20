@@ -1,3 +1,6 @@
+/** Widest string from formatBytesFromKb (1 decimal); sizes MeterRow value slots. */
+export const FORMAT_BYTES_VALUE_PROBE = '1023.9M';
+
 export function formatBytesFromKb(kb, digits = 1) {
     if (kb == null || !Number.isFinite(kb))
         return '—';

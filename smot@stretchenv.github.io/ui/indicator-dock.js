@@ -213,16 +213,19 @@ export const IndicatorDock = {
         }
         this._dock.opacity = 255;
         this._dockOpen = true;
-        this._syncPopupFg();
-        this._syncFixedBarFill();
-        this._collector.resyncSensors();
-        this._refresh();
-        this._queueScrollSync();
+        this._runWhenDetailAllocated(() => {
+            this._syncPopupFg();
+            this._syncFixedBarFill();
+            this._collector.resyncSensors();
+            this._refresh();
+            this._queueScrollSync();
+        });
     },
 
     _closeDock() {
         const wasOpen = this._dockOpen;
         this._dockOpen = false;
+        this._cancelDetailAllocatedWork();
         if (this._dock) {
             this._dock.visible = false;
             this._dock.opacity = 0;
